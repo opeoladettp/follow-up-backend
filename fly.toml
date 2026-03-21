@@ -1,0 +1,27 @@
+app = "followupmedium-newsroom"
+primary_region = "lhr"  # London — closest to your eu-west-2 S3 bucket
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENVIRONMENT = "production"
+  LOG_LEVEL = "info"
+  GIN_MODE = "release"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true   # free tier: stop when idle
+  auto_start_machines = true  # wake on request
+  min_machines_running = 0    # 0 = full free tier
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

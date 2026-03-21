@@ -1,0 +1,49 @@
+# Environment - NEVER commit secrets
+.env
+*.env
+.env.*
+!.env.example
+
+# Google service account key
+service-account-key.json
+*.json.key
+
+# Go build artifacts
+main
+*.exe
+*.out
+/dist
+
+# Logs
+*.log
+*.out
+backend.log
+backend.out
+backend_error.log
+backend_full.log
+backend_startup.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large media files (use cloud storage instead)
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Setup/guide docs and scripts (contain examples with secrets)
+*.ps1
+.snapshots/
+fix_s3_public_access.go
+
+# Exclude all root-level markdown except README
+/*.md
+!/README.md

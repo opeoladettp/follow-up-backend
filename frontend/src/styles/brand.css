@@ -1,0 +1,238 @@
+/* FollowUp Brand Colors */
+:root {
+  /* Primary Brand Colors */
+  --brand-primary: #fb6205;      /* Vibrant Orange */
+  --brand-dark: #0a1527;         /* Deep Navy Blue */
+  --brand-gray: #888d95;         /* Neutral Gray */
+  
+  /* Extended Palette */
+  --brand-primary-light: #ff8c3a;
+  --brand-primary-dark: #d94a00;
+  --brand-dark-light: #1a2540;
+  --brand-dark-lighter: #2a3550;
+  --brand-gray-light: #a8adb5;
+  --brand-gray-dark: #686d75;
+  
+  /* Semantic Colors */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #3b82f6;
+  
+  /* Neutral */
+  --white: #ffffff;
+  --black: #000000;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
+
+/* Brand Typography */
+.brand-heading {
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+
+.brand-accent {
+  color: var(--brand-primary);
+}
+
+.brand-text {
+  color: var(--brand-gray);
+}
+
+/* Brand Buttons */
+.btn-brand-primary {
+  background-color: var(--brand-primary);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-brand-primary:hover {
+  background-color: var(--brand-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(251, 98, 5, 0.3);
+}
+
+.btn-brand-primary:active {
+  transform: translateY(0);
+}
+
+.btn-brand-secondary {
+  background-color: var(--brand-dark);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-brand-secondary:hover {
+  background-color: var(--brand-dark-light);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(10, 21, 39, 0.3);
+}
+
+.btn-brand-secondary:active {
+  transform: translateY(0);
+}
+
+.btn-brand-outline {
+  background-color: transparent;
+  color: var(--brand-primary);
+  border: 2px solid var(--brand-primary);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-brand-outline:hover {
+  background-color: var(--brand-primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(251, 98, 5, 0.3);
+}
+
+/* Brand Badges */
+.badge-brand {
+  background-color: var(--brand-primary);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.badge-brand-dark {
+  background-color: var(--brand-dark);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Brand Dividers */
+.divider-brand {
+  height: 3px;
+  background: linear-gradient(90deg, var(--brand-primary), var(--brand-dark));
+  border: none;
+  margin: 1rem 0;
+}
+
+/* Brand Accents */
+.accent-left {
+  border-left: 4px solid var(--brand-primary);
+  padding-left: 1rem;
+}
+
+.accent-top {
+  border-top: 4px solid var(--brand-primary);
+  padding-top: 1rem;
+}
+
+/* Brand Gradients */
+.gradient-brand {
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-dark));
+  color: white;
+}
+
+.gradient-brand-light {
+  background: linear-gradient(135deg, var(--brand-primary-light), var(--brand-primary));
+  color: white;
+}
+
+/* Brand Cards */
+.card-brand {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.card-brand:hover {
+  box-shadow: 0 4px 12px rgba(251, 98, 5, 0.15);
+  border-color: var(--brand-primary);
+}
+
+.card-brand-dark {
+  background: var(--brand-dark);
+  color: white;
+  border: none;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 12px rgba(10, 21, 39, 0.2);
+}
+
+/* Brand Inputs */
+.input-brand {
+  border: 2px solid var(--gray-300);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.input-brand:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(251, 98, 5, 0.1);
+}
+
+/* Brand Loading */
+@keyframes brand-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-brand {
+  border: 3px solid var(--gray-200);
+  border-top: 3px solid var(--brand-primary);
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  animation: brand-spin 1s linear infinite;
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .card-brand {
+    background: var(--gray-800);
+    border-color: var(--gray-700);
+  }
+
+  .card-brand:hover {
+    border-color: var(--brand-primary);
+  }
+
+  .input-brand {
+    background: var(--gray-800);
+    color: white;
+    border-color: var(--gray-700);
+  }
+
+  .input-brand:focus {
+    border-color: var(--brand-primary);
+  }
+}
