@@ -35,7 +35,11 @@ export default function RSSFeedManager({ user }) {
       if (editingId) {
         await api.updateRSSFeed(editingId, formData)
       } else {
-        await api.addRSSFeed(formData)
+        const result = await api.addRSSFeed(formData)
+        // Show resolved URL if an X handle was converted
+        if (result.resolved_url && result.resolved_url !== formData.url) {
+          alert(`Feed added. X handle resolved to:\n${result.resolved_url}`)
+        }
       }
       await loadFeeds()
       resetForm()

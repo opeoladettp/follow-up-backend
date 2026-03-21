@@ -342,7 +342,11 @@ func addRSSFeedNew(rssService *services.RSSService) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "RSS feed added successfully", "feed": feed})
+		c.JSON(http.StatusOK, gin.H{
+			"message":      "RSS feed added successfully",
+			"feed":         feed,
+			"resolved_url": feed.URL, // show what X handle was converted to
+		})
 	}
 }
 

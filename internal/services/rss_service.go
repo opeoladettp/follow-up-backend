@@ -170,25 +170,25 @@ func (r *RSSService) AddRSSFeed(feedURL, feedName, category string) (*models.RSS
 	return &feed, nil
 }
 
-// normalizeToRSSURL converts X/Twitter handles and profile URLs to Nitter RSS feeds
+// normalizeToRSSURL converts X/Twitter handles and profile URLs to RSSHub feeds
 func normalizeToRSSURL(input string) string {
 	input = strings.TrimSpace(input)
 
 	// Already a proper RSS URL
 	if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
-		// Convert twitter.com or x.com profile URLs to Nitter RSS
+		// Convert twitter.com or x.com profile URLs to RSSHub
 		if strings.Contains(input, "twitter.com/") || strings.Contains(input, "x.com/") {
 			parts := strings.Split(strings.TrimRight(input, "/"), "/")
 			handle := parts[len(parts)-1]
-			return "https://nitter.net/" + handle + "/rss"
+			return "https://rsshub.app/twitter/user/" + handle
 		}
 		return input
 	}
 
-	// @handle or plain handle → Nitter RSS
+	// @handle or plain handle (no dots = not a domain)
 	handle := strings.TrimPrefix(input, "@")
-	if !strings.Contains(handle, ".") {
-		return "https://nitter.net/" + handle + "/rss"
+	if !strings.Contains(handle, ".") && handle != "" {
+		return "https://rsshub.app/twitter/user/" + handle
 	}
 
 	// Bare domain without scheme
@@ -312,7 +312,7 @@ func (r *RSSService) fetchFromURLs(urls []string, _ map[string]string) ([]Headli
 	for _, feedURL := range urls {
 		items, err := r.fetchHeadlinesFromFeed(feedURL, "")
 		if err != nil {
-			logrus.WithError(err).WithField("feed", feedURL).Error("Failed to fetch headlines")
+			logrus.WithError(err).WithField("feed", feedURL).Warn("Failed to fetch headlines from feed, skipping")
 			continue
 		}
 		all = append(all, items...)
