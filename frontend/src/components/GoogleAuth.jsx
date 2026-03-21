@@ -1,18 +1,18 @@
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google'
 import { jwtDecode } from 'jwt-decode'
-import { Newspaper } from 'lucide-react'
+
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api/v1`
+  : '/api/v1'
 
 export default function GoogleAuth({ onLoginSuccess }) {
   const handleSuccess = async (credentialResponse) => {
     try {
       const decoded = jwtDecode(credentialResponse.credential)
       
-      // Send to backend for authentication
-      const response = await fetch('http://localhost:8080/api/v1/auth/google', {
+      const response = await fetch(`${API_BASE}/auth/google`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           google_id: decoded.sub,
           email: decoded.email,
@@ -21,16 +21,11 @@ export default function GoogleAuth({ onLoginSuccess }) {
         }),
       })
 
-      if (!response.ok) {
-        throw new Error('Authentication failed')
-      }
+      if (!response.ok) throw new Error('Authentication failed')
 
       const data = await response.json()
-      
-      // Store user data in localStorage
       localStorage.setItem('user', JSON.stringify(data.user))
       localStorage.setItem('userId', data.user.id)
-      
       onLoginSuccess(data.user)
     } catch (error) {
       console.error('Login error:', error)
@@ -51,9 +46,7 @@ export default function GoogleAuth({ onLoginSuccess }) {
             {/* Logo and Title */}
             <div className="text-center space-y-3">
               <div className="flex justify-center">
-                <div className="p-4 bg-blue-100 rounded-full">
-                  <Newspaper className="w-12 h-12 text-blue-600" />
-                </div>
+                <img src="/logo.png" alt="FollowUp Logo" className="h-16 w-auto" />
               </div>
               <h1 className="text-3xl font-bold text-gray-900">FollowUpMedium</h1>
               <p className="text-gray-600">AI-Powered News Tracking & Reporting</p>
@@ -86,25 +79,6 @@ export default function GoogleAuth({ onLoginSuccess }) {
                 text="continue_with"
                 shape="rectangular"
               />
-            </div>
-
-            {/* User Types Info */}
-            <div className="pt-4 border-t border-gray-200">
-              <p className="text-xs text-gray-500 text-center mb-3">User Roles:</p>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-2 bg-gray-50 rounded-lg">
-                  <p className="text-xs font-medium text-gray-900">Correspondent</p>
-                  <p className="text-xs text-gray-500 mt-1">Create stories</p>
-                </div>
-                <div className="p-2 bg-gray-50 rounded-lg">
-                  <p className="text-xs font-medium text-gray-900">Editor</p>
-                  <p className="text-xs text-gray-500 mt-1">Manage feeds</p>
-                </div>
-                <div className="p-2 bg-gray-50 rounded-lg">
-                  <p className="text-xs font-medium text-gray-900">Admin</p>
-                  <p className="text-xs text-gray-500 mt-1">Full access</p>
-                </div>
-              </div>
             </div>
           </div>
 
