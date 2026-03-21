@@ -70,3 +70,21 @@ func (r *Redis) GetCachedStoryContext(storyID string) (string, error) {
 	key := "context:" + storyID
 	return r.Client.Get(ctx, key).Result()
 }
+
+// Cache generic JSON data
+func (r *Redis) CacheJSON(key string, data string, ttl time.Duration) error {
+	ctx := context.Background()
+	return r.Client.Set(ctx, key, data, ttl).Err()
+}
+
+// GetCachedJSON retrieves cached JSON string
+func (r *Redis) GetCachedJSON(key string) (string, error) {
+	ctx := context.Background()
+	return r.Client.Get(ctx, key).Result()
+}
+
+// InvalidateCache deletes a cache key
+func (r *Redis) InvalidateCache(key string) error {
+	ctx := context.Background()
+	return r.Client.Del(ctx, key).Err()
+}

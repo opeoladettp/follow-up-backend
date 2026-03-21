@@ -2,8 +2,10 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
+	"strings"
 	"time"
 
 	"followupmedium-newsroom/internal/database"
@@ -17,10 +19,18 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+const (
+	cacheKeyFeeds     = "rss:feeds"
+	cacheKeyHeadlines = "rss:headlines"
+	cacheTTLFeeds     = 5 * time.Minute
+	cacheTTLHeadlines = 10 * time.Minute
+)
+
 type RSSService struct {
-	db       *database.MongoDB
-	parser   *gofeed.Parser
-	rssFeeds []string // seed feeds from env (read-only fallback)
+	db        *database.MongoDB
+	redis     *database.Redis
+	parser    *gofeed.Parser
+	seedFeeds []string // env-configured seed URLs
 }
 
 type Headline struct {
@@ -34,52 +44,75 @@ type Headline struct {
 	ImageURL    string    `json:"image_url,omitempty"`
 }
 
-func NewRSSService(db *database.MongoDB, rssFeeds []string) *RSSService {
+func NewRSSService(db *database.MongoDB, redis *database.Redis, rssFeeds []string) *RSSService {
 	svc := &RSSService{
-		db:       db,
-		parser:   gofeed.NewParser(),
-		rssFeeds: rssFeeds,
+		db:        db,
+		redis:     redis,
+		parser:    gofeed.NewParser(),
+		seedFeeds: rssFeeds,
 	}
-	// Seed default feeds into DB if collection is empty
 	svc.seedDefaultFeeds()
 	return svc
 }
 
-func (r *RSSService) feedsCollection() *mongo.Collection {
+func (r *RSSService) col() *mongo.Collection {
 	return r.db.Database.Collection("rss_feeds")
 }
 
-// seedDefaultFeeds inserts env-configured feeds into DB if none exist yet
+// seedDefaultFeeds inserts env-configured feeds into DB if collection is empty
 func (r *RSSService) seedDefaultFeeds() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	count, err := r.feedsCollection().CountDocuments(ctx, bson.M{})
+	count, err := r.col().CountDocuments(ctx, bson.M{})
 	if err != nil || count > 0 {
 		return
 	}
 
-	for i, feedURL := range r.rssFeeds {
+	defaultNames := map[string]string{
+		"reutersagency.com": "Reuters",
+		"bbci.co.uk":        "BBC News",
+		"techcrunch.com":    "TechCrunch",
+		"cnn.com":           "CNN",
+		"theverge.com":      "The Verge",
+	}
+
+	for _, feedURL := range r.seedFeeds {
+		name := feedURL
+		for domain, n := range defaultNames {
+			if strings.Contains(feedURL, domain) {
+				name = n
+				break
+			}
+		}
 		feed := models.RSSFeed{
 			ID:        primitive.NewObjectID(),
-			Name:      fmt.Sprintf("Feed %d", i+1),
+			Name:      name,
 			URL:       feedURL,
 			Category:  "General",
 			Active:    true,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		_, _ = r.feedsCollection().InsertOne(ctx, feed)
+		_, _ = r.col().InsertOne(ctx, feed)
 	}
-	logrus.Infof("Seeded %d default RSS feeds into DB", len(r.rssFeeds))
+	logrus.Infof("Seeded %d default RSS feeds into DB", len(r.seedFeeds))
 }
 
-// GetRSSFeeds returns all feeds from MongoDB
+// GetRSSFeeds returns all feeds, using Redis cache
 func (r *RSSService) GetRSSFeeds() ([]models.RSSFeed, error) {
+	// Try cache first
+	if cached, err := r.redis.GetCachedJSON(cacheKeyFeeds); err == nil {
+		var feeds []models.RSSFeed
+		if json.Unmarshal([]byte(cached), &feeds) == nil {
+			return feeds, nil
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cursor, err := r.feedsCollection().Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_at": 1}))
+	cursor, err := r.col().Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"created_at": 1}))
 	if err != nil {
 		return nil, err
 	}
@@ -89,18 +122,22 @@ func (r *RSSService) GetRSSFeeds() ([]models.RSSFeed, error) {
 	if err = cursor.All(ctx, &feeds); err != nil {
 		return nil, err
 	}
+
+	// Cache result
+	if data, err := json.Marshal(feeds); err == nil {
+		_ = r.redis.CacheJSON(cacheKeyFeeds, string(data), cacheTTLFeeds)
+	}
+
 	return feeds, nil
 }
 
-// AddRSSFeed persists a new feed to MongoDB
+// AddRSSFeed persists a new feed and invalidates cache
 func (r *RSSService) AddRSSFeed(feedURL, feedName, category string) (*models.RSSFeed, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Check duplicate
 	var existing models.RSSFeed
-	err := r.feedsCollection().FindOne(ctx, bson.M{"url": feedURL}).Decode(&existing)
-	if err == nil {
+	if err := r.col().FindOne(ctx, bson.M{"url": feedURL}).Decode(&existing); err == nil {
 		return nil, fmt.Errorf("feed already exists")
 	}
 
@@ -118,16 +155,16 @@ func (r *RSSService) AddRSSFeed(feedURL, feedName, category string) (*models.RSS
 		UpdatedAt: time.Now(),
 	}
 
-	_, err = r.feedsCollection().InsertOne(ctx, feed)
-	if err != nil {
+	if _, err := r.col().InsertOne(ctx, feed); err != nil {
 		return nil, err
 	}
 
+	r.invalidateCaches()
 	logrus.WithFields(logrus.Fields{"url": feedURL, "name": feedName}).Info("RSS feed added")
 	return &feed, nil
 }
 
-// UpdateRSSFeed updates name/category/active for a feed
+// UpdateRSSFeed updates a feed by ID and invalidates cache
 func (r *RSSService) UpdateRSSFeed(feedID, name, category string, active *bool) (*models.RSSFeed, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -150,7 +187,7 @@ func (r *RSSService) UpdateRSSFeed(feedID, name, category string, active *bool) 
 
 	after := options.After
 	var updated models.RSSFeed
-	err = r.feedsCollection().FindOneAndUpdate(
+	err = r.col().FindOneAndUpdate(
 		ctx,
 		bson.M{"_id": objID},
 		bson.M{"$set": update},
@@ -160,10 +197,11 @@ func (r *RSSService) UpdateRSSFeed(feedID, name, category string, active *bool) 
 		return nil, fmt.Errorf("feed not found")
 	}
 
+	r.invalidateCaches()
 	return &updated, nil
 }
 
-// DeleteRSSFeed removes a feed from MongoDB
+// DeleteRSSFeed removes a feed and invalidates cache
 func (r *RSSService) DeleteRSSFeed(feedID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -173,60 +211,96 @@ func (r *RSSService) DeleteRSSFeed(feedID string) error {
 		return fmt.Errorf("invalid feed ID")
 	}
 
-	result, err := r.feedsCollection().DeleteOne(ctx, bson.M{"_id": objID})
+	result, err := r.col().DeleteOne(ctx, bson.M{"_id": objID})
 	if err != nil {
 		return err
 	}
 	if result.DeletedCount == 0 {
 		return fmt.Errorf("feed not found")
 	}
+
+	r.invalidateCaches()
 	return nil
 }
 
-// FetchAllHeadlines fetches from all active DB feeds
+func (r *RSSService) invalidateCaches() {
+	_ = r.redis.InvalidateCache(cacheKeyFeeds)
+	_ = r.redis.InvalidateCache(cacheKeyHeadlines)
+}
+
+// FetchAllHeadlines fetches from all active DB feeds, with Redis caching
 func (r *RSSService) FetchAllHeadlines() ([]Headline, error) {
+	// Try headlines cache
+	if cached, err := r.redis.GetCachedJSON(cacheKeyHeadlines); err == nil {
+		var headlines []Headline
+		if json.Unmarshal([]byte(cached), &headlines) == nil {
+			logrus.Info("Serving headlines from cache")
+			return headlines, nil
+		}
+	}
+
 	feeds, err := r.GetRSSFeeds()
 	if err != nil || len(feeds) == 0 {
-		// Fallback to env feeds
-		return r.fetchFromURLs(r.rssFeeds, map[string]string{})
+		return r.fetchFromURLs(r.seedFeeds, map[string]string{})
 	}
 
 	urls := make([]string, 0, len(feeds))
-	categories := make(map[string]string)
+	meta := make(map[string]models.RSSFeed)
 	for _, f := range feeds {
 		if f.Active {
 			urls = append(urls, f.URL)
-			categories[f.URL] = f.Category
+			meta[f.URL] = f
 		}
 	}
-	return r.fetchFromURLs(urls, categories)
+
+	headlines, err := r.fetchFromURLs(urls, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Attach category from DB feed
+	for i, h := range headlines {
+		for _, f := range feeds {
+			if strings.Contains(h.Source, f.Name) || strings.Contains(f.URL, strings.ToLower(h.Source)) {
+				headlines[i].Category = f.Category
+				break
+			}
+		}
+	}
+
+	// Cache headlines
+	if data, err := json.Marshal(headlines); err == nil {
+		_ = r.redis.CacheJSON(cacheKeyHeadlines, string(data), cacheTTLHeadlines)
+	}
+
+	return headlines, nil
 }
 
-func (r *RSSService) fetchFromURLs(urls []string, categories map[string]string) ([]Headline, error) {
-	var allHeadlines []Headline
+func (r *RSSService) fetchFromURLs(urls []string, _ map[string]string) ([]Headline, error) {
+	var all []Headline
 	for _, feedURL := range urls {
-		headlines, err := r.fetchHeadlinesFromFeed(feedURL, categories[feedURL])
+		items, err := r.fetchHeadlinesFromFeed(feedURL, "")
 		if err != nil {
 			logrus.WithError(err).WithField("feed", feedURL).Error("Failed to fetch headlines")
 			continue
 		}
-		allHeadlines = append(allHeadlines, headlines...)
+		all = append(all, items...)
 	}
-	logrus.WithField("count", len(allHeadlines)).Info("Fetched RSS headlines")
-	return allHeadlines, nil
+	logrus.WithField("count", len(all)).Info("Fetched RSS headlines")
+	return all, nil
 }
 
-// FetchHeadlinesBySource fetches headlines from a specific source
+// FetchHeadlinesBySource fetches from a specific source
 func (r *RSSService) FetchHeadlinesBySource(source string) ([]Headline, error) {
 	feeds, _ := r.GetRSSFeeds()
 	for _, f := range feeds {
-		if contains(f.URL, source) || contains(f.Name, source) {
+		if strings.Contains(strings.ToLower(f.URL), strings.ToLower(source)) ||
+			strings.Contains(strings.ToLower(f.Name), strings.ToLower(source)) {
 			return r.fetchHeadlinesFromFeed(f.URL, f.Category)
 		}
 	}
-	// Fallback to env feeds
-	for _, url := range r.rssFeeds {
-		if contains(url, source) {
+	for _, url := range r.seedFeeds {
+		if strings.Contains(url, source) {
 			return r.fetchHeadlinesFromFeed(url, "")
 		}
 	}
@@ -241,7 +315,7 @@ func (r *RSSService) fetchHeadlinesFromFeed(feedURL, category string) ([]Headlin
 
 	headlines := make([]Headline, 0, len(feed.Items))
 	for _, item := range feed.Items {
-		headline := Headline{
+		h := Headline{
 			ID:          generateHeadlineID(item),
 			Title:       html.UnescapeString(item.Title),
 			Description: html.UnescapeString(item.Description),
@@ -250,17 +324,17 @@ func (r *RSSService) fetchHeadlinesFromFeed(feedURL, category string) ([]Headlin
 			Category:    category,
 		}
 		if item.PublishedParsed != nil {
-			headline.PublishedAt = *item.PublishedParsed
+			h.PublishedAt = *item.PublishedParsed
 		}
 		if item.Image != nil {
-			headline.ImageURL = item.Image.URL
+			h.ImageURL = item.Image.URL
 		}
-		headlines = append(headlines, headline)
+		headlines = append(headlines, h)
 	}
 	return headlines, nil
 }
 
-// SaveReport saves a correspondent's edited report and creates a Story entry
+// SaveReport saves a report and creates a Story entry
 func (r *RSSService) SaveReport(headlineID, title, script, author string) (string, error) {
 	report := models.NewsReport{
 		ID:         primitive.NewObjectID(),
@@ -273,8 +347,7 @@ func (r *RSSService) SaveReport(headlineID, title, script, author string) (strin
 		UpdatedAt:  time.Now(),
 	}
 
-	_, err := r.db.NewsReports().InsertOne(nil, report)
-	if err != nil {
+	if _, err := r.db.NewsReports().InsertOne(nil, report); err != nil {
 		return "", fmt.Errorf("failed to save report: %w", err)
 	}
 
@@ -284,33 +357,16 @@ func (r *RSSService) SaveReport(headlineID, title, script, author string) (strin
 		Description: script,
 		Category:    "news-report",
 		Tags:        []string{"rss", "correspondent"},
-		Sources: []models.Source{
-			{Type: "rss", URL: headlineID, Name: author},
-		},
-		Status:    "active",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Sources:     []models.Source{{Type: "rss", URL: headlineID, Name: author}},
+		Status:      "active",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
-
-	_, err = r.db.Stories().InsertOne(nil, story)
-	if err != nil {
-		logrus.WithError(err).Warn("Failed to create Story entry, but report was saved")
+	if _, err := r.db.Stories().InsertOne(nil, story); err != nil {
+		logrus.WithError(err).Warn("Failed to create Story entry")
 	}
 
 	return report.ID.Hex(), nil
-}
-
-func generateHeadlineID(item *gofeed.Item) string {
-	if item.GUID != "" {
-		return item.GUID
-	}
-	return item.Link
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		(len(substr) > 0 && len(s) > 0 &&
-			(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr)))
 }
 
 func (r *RSSService) UpdateReportVideoStatus(reportID, videoJobID, status, videoURL string) error {
@@ -318,7 +374,6 @@ func (r *RSSService) UpdateReportVideoStatus(reportID, videoJobID, status, video
 	if err != nil {
 		return fmt.Errorf("invalid report ID: %w", err)
 	}
-
 	update := map[string]interface{}{
 		"video_job_id": videoJobID,
 		"video_status": status,
@@ -327,9 +382,7 @@ func (r *RSSService) UpdateReportVideoStatus(reportID, videoJobID, status, video
 	if videoURL != "" {
 		update["video_url"] = videoURL
 	}
-
-	_, err = r.db.NewsReports().UpdateOne(
-		nil,
+	_, err = r.db.NewsReports().UpdateOne(nil,
 		map[string]interface{}{"_id": objID},
 		map[string]interface{}{"$set": update},
 	)
@@ -341,11 +394,16 @@ func (r *RSSService) GetReportStatus(reportID string) (*models.NewsReport, error
 	if err != nil {
 		return nil, fmt.Errorf("invalid report ID: %w", err)
 	}
-
 	var report models.NewsReport
-	err = r.db.NewsReports().FindOne(nil, map[string]interface{}{"_id": objID}).Decode(&report)
-	if err != nil {
+	if err = r.db.NewsReports().FindOne(nil, map[string]interface{}{"_id": objID}).Decode(&report); err != nil {
 		return nil, fmt.Errorf("report not found: %w", err)
 	}
 	return &report, nil
+}
+
+func generateHeadlineID(item *gofeed.Item) string {
+	if item.GUID != "" {
+		return item.GUID
+	}
+	return item.Link
 }

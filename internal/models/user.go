@@ -31,12 +31,12 @@ type User struct {
 
 // RSSFeed represents an RSS feed source
 type RSSFeed struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name        string             `bson:"name" json:"name"`
-	URL         string             `bson:"url" json:"url"`
-	Category    string             `bson:"category" json:"category"`
-	Active      bool               `bson:"active" json:"active"`
-	AddedBy     primitive.ObjectID `bson:"added_by" json:"added_by"`
-	CreatedAt   time.Time          `bson:"created_at" json:"created_at"`
-	UpdatedAt   time.Time          `bson:"updated_at" json:"updated_at"`
+	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name      string             `bson:"name" json:"name"`
+	URL       string             `bson:"url" json:"url"`
+	Category  string             `bson:"category" json:"category"`
+	Active    bool               `bson:"active" json:"active"`
+	AddedBy   string             `bson:"added_by,omitempty" json:"added_by,omitempty"`
+	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
+	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
 }

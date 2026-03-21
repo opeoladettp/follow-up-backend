@@ -84,7 +84,7 @@ func main() {
 		}
 	}
 	
-	rssService := services.NewRSSService(db, cfg.RSSFeeds)
+	rssService := services.NewRSSService(db, redis, cfg.RSSFeeds)
 	authService := services.NewAuthService(db.Database) // Pass the mongo.Database field
 
 	// Initialize worker pool
