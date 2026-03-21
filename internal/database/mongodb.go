@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"net/url"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
@@ -27,11 +29,11 @@ func NewMongoDB(uri string) (*MongoDB, error) {
 		return nil, err
 	}
 
-	// Extract database name from URI or use default
+	// Extract database name from URI path (e.g. .../newsroom?...)
 	dbName := "newsroom"
-	if clientOptions := options.Client().ApplyURI(uri); clientOptions.Auth != nil {
-		if clientOptions.Auth.AuthSource != "" {
-			dbName = clientOptions.Auth.AuthSource
+	if parsed, err := url.Parse(uri); err == nil {
+		if path := strings.TrimPrefix(parsed.Path, "/"); path != "" {
+			dbName = path
 		}
 	}
 
