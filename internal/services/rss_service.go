@@ -420,6 +420,21 @@ func (r *RSSService) GetReportByTitle(title string) (*models.NewsReport, error) 
 	return &report, nil
 }
 
+// UpdateReportImages patches the images array on an existing report
+func (r *RSSService) UpdateReportImages(reportID string, images []map[string]interface{}) error {
+	objID, err := primitive.ObjectIDFromHex(reportID)
+	if err != nil {
+		return fmt.Errorf("invalid report ID: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = r.db.NewsReports().UpdateOne(ctx,
+		bson.M{"_id": objID},
+		bson.M{"$set": bson.M{"images": images, "updated_at": time.Now()}},
+	)
+	return err
+}
+
 func (r *RSSService) UpdateReportVideoStatus(reportID, videoJobID, status, videoURL string) error {
 	objID, err := primitive.ObjectIDFromHex(reportID)
 	if err != nil {

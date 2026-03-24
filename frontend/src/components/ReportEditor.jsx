@@ -72,15 +72,8 @@ export default function ReportEditor({ headline, onBack, user, onStoryCreated })
     }
   }, [thinkingProcess])
 
-  // Auto-save when script is generated
-  useEffect(() => {
-    if (script && !reportId && !saving) {
-      const timer = setTimeout(() => {
-        handleSaveReport()
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [script, reportId, saving])
+  // Auto-save when script is generated — disabled: we save explicitly after media generation
+  // (images would be empty if we saved here, before generateMedia() completes)
 
   const addThinkingStep = (step) => {
     setThinkingProcess(prev => [...prev, { ...step, timestamp: new Date() }])
@@ -110,11 +103,43 @@ export default function ReportEditor({ headline, onBack, user, onStoryCreated })
         author_name: author || ''
       })
       
-      setScript(data.report)
+      const generatedScript = data.report
+      setScript(generatedScript)
       addThinkingStep({ type: 'success', message: 'Script generated successfully!' })
-      
-      // Generate media (images and reactions)
-      await generateMedia()
+
+      // Save report immediately (without images yet) to get a reportId
+      addThinkingStep({ type: 'info', message: 'Saving report...' })
+      let savedReportId = null
+      try {
+        setSaving(true)
+        const saved = await api.saveReport({
+          headline_id: headline.id,
+          title: headline.title,
+          script: generatedScript,
+          author: author || '',
+          images: []
+        })
+        savedReportId = saved.report_id
+        setReportId(savedReportId)
+        if (onStoryCreated) onStoryCreated()
+        addThinkingStep({ type: 'success', message: 'Report saved!' })
+      } catch (saveErr) {
+        console.error('Failed to save report:', saveErr)
+        addThinkingStep({ type: 'error', message: 'Failed to save report.' })
+      } finally {
+        setSaving(false)
+      }
+
+      // Generate media (images) — then patch the report with the images
+      const generatedImages = await generateMedia(generatedScript)
+      if (savedReportId && generatedImages && generatedImages.length > 0) {
+        try {
+          await api.updateReportImages(savedReportId, generatedImages)
+          addThinkingStep({ type: 'success', message: 'Images saved to report!' })
+        } catch (patchErr) {
+          console.error('Failed to patch images onto report:', patchErr)
+        }
+      }
     } catch (error) {
       console.error('Failed to generate report:', error)
       addThinkingStep({ type: 'error', message: 'Failed to generate report. Please try again.' })
@@ -124,49 +149,48 @@ export default function ReportEditor({ headline, onBack, user, onStoryCreated })
     }
   }
 
-  const generateMedia = async () => {
+  const generateMedia = async (scriptText) => {
     try {
       setGeneratingMedia(true)
       addThinkingStep({ type: 'info', message: 'Generating story images with Imagen AI...' })
       
-      // Call backend to generate real images with Imagen
       const response = await api.generateStoryMedia({
         title: headline.title,
-        description: script
+        description: scriptText || script
       })
       
+      let resultImages
       if (response.images && response.images.length > 0) {
-        setImages(response.images)
+        resultImages = response.images
         addThinkingStep({ type: 'success', message: `Generated ${response.images.length} images successfully!` })
       } else {
-        // Fallback to placeholder if no images generated
-        const mockImages = [
+        resultImages = [
           {
-            url: `https://picsum.photos/1024/768?random=${Math.random()}`,
+            url: `https://picsum.photos/seed/${encodeURIComponent(headline.title)}1/800/450`,
             description: `Illustration for: ${headline.title}`,
             type: 'story',
             source: 'placeholder'
           }
         ]
-        setImages(mockImages)
         addThinkingStep({ type: 'info', message: 'Using placeholder images' })
       }
       
+      setImages(resultImages)
       addThinkingStep({ type: 'info', message: 'Media generation complete' })
+      return resultImages
     } catch (error) {
       console.error('Failed to generate media:', error)
       addThinkingStep({ type: 'error', message: 'Failed to generate images. Using placeholders.' })
-      
-      // Fallback to placeholder images
-      const mockImages = [
+      const fallback = [
         {
-          url: `https://picsum.photos/1024/768?random=${Math.random()}`,
+          url: `https://picsum.photos/seed/${encodeURIComponent(headline.title)}1/800/450`,
           description: `Illustration for: ${headline.title}`,
           type: 'story',
           source: 'placeholder'
         }
       ]
-      setImages(mockImages)
+      setImages(fallback)
+      return fallback
     } finally {
       setGeneratingMedia(false)
     }

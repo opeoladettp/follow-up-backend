@@ -60,6 +60,9 @@ func SetupRSSRoutes(router *gin.RouterGroup, rssService *services.RSSService, ai
 
 		// Get report by story title (for StoryPanel media lookup)
 		rss.GET("/report-by-title", getReportByTitle(rssService))
+
+		// Update images on an existing report (called after media generation)
+		rss.PATCH("/report/:id/images", updateReportImages(rssService))
 	}
 }
 
@@ -516,6 +519,24 @@ func getReportByTitle(rssService *services.RSSService) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, report)
+	}
+}
+
+func updateReportImages(rssService *services.RSSService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		reportID := c.Param("id")
+		var request struct {
+			Images []map[string]interface{} `json:"images" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := rssService.UpdateReportImages(reportID, request.Images); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "images updated"})
 	}
 }
 

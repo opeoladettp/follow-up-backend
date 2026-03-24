@@ -134,6 +134,11 @@ export const api = {
     return response.data
   },
 
+  updateReportImages: async (reportId, images) => {
+    const response = await apiClient.patch(`/rss/report/${reportId}/images`, { images })
+    return response.data
+  },
+
   generateVideo: async (data) => {
     const response = await apiClient.post('/rss/generate-video', data)
     return response.data
