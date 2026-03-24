@@ -4,11 +4,13 @@ import { api } from '../services/api'
 import MediaGallery from './MediaGallery'
 
 // Proxy Google profile pictures through backend to avoid referrer/CORS issues
+const BACKEND_URL = import.meta.env.VITE_API_URL || ''
+
 function getDisplayAvatarUrl(url) {
   if (!url) return null
   if (url.startsWith('data:')) return url
   if (url.includes('googleusercontent.com') || url.includes('lh3.google')) {
-    return `/api/v1/rss/proxy-image?url=${encodeURIComponent(url)}`
+    return `${BACKEND_URL}/api/v1/rss/proxy-image?url=${encodeURIComponent(url)}`
   }
   return url
 }

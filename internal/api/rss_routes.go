@@ -410,9 +410,9 @@ func generateStoryMedia(aiService *services.AIService) gin.HandlerFunc {
 		if err != nil {
 			logrus.WithError(err).Warn("Image generation unavailable, using placeholders")
 			images = []map[string]interface{}{
-				{"url": "https://placehold.co/800x450?text=Story+Image+1", "type": "story", "source": "placeholder", "index": 1},
-				{"url": "https://placehold.co/800x450?text=Story+Image+2", "type": "story", "source": "placeholder", "index": 2},
-				{"url": "https://placehold.co/800x450?text=Story+Image+3", "type": "story", "source": "placeholder", "index": 3},
+				{"url": "https://picsum.photos/seed/" + strings.ReplaceAll(request.Title, " ", "-") + "1/800/450", "type": "story", "source": "placeholder", "index": 1},
+				{"url": "https://picsum.photos/seed/" + strings.ReplaceAll(request.Title, " ", "-") + "2/800/450", "type": "story", "source": "placeholder", "index": 2},
+				{"url": "https://picsum.photos/seed/" + strings.ReplaceAll(request.Title, " ", "-") + "3/800/450", "type": "story", "source": "placeholder", "index": 3},
 			}
 		}
 
