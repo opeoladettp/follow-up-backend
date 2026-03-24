@@ -1,9 +1,12 @@
 package api
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"followupmedium-newsroom/internal/services"
@@ -408,15 +411,12 @@ func generateStoryMedia(aiService *services.AIService) gin.HandlerFunc {
 			return
 		}
 
-		// Generate images with Google Imagen; fall back to placeholders if not configured
+		// Try Google Imagen first
 		images, err := aiService.GenerateStoryImagesWithImagen(request.Title, request.Description)
 		if err != nil {
-			logrus.WithError(err).Warn("Image generation unavailable, using placeholders")
-			images = []map[string]interface{}{
-				{"url": "https://picsum.photos/seed/" + strings.ReplaceAll(request.Title, " ", "-") + "1/800/450", "type": "story", "source": "placeholder", "index": 1},
-				{"url": "https://picsum.photos/seed/" + strings.ReplaceAll(request.Title, " ", "-") + "2/800/450", "type": "story", "source": "placeholder", "index": 2},
-				{"url": "https://picsum.photos/seed/" + strings.ReplaceAll(request.Title, " ", "-") + "3/800/450", "type": "story", "source": "placeholder", "index": 3},
-			}
+			logrus.WithError(err).Warn("Imagen unavailable, falling back to NewsAPI images")
+			// Fall back to NewsAPI — real news photos relevant to the story
+			images = fetchNewsAPIImages(request.Title)
 		}
 
 		c.JSON(http.StatusOK, gin.H{
@@ -424,6 +424,90 @@ func generateStoryMedia(aiService *services.AIService) gin.HandlerFunc {
 			"reactions": []interface{}{},
 		})
 	}
+}
+
+// fetchNewsAPIImages queries NewsAPI for articles matching the title and returns their images.
+// Falls back to a Wikimedia Commons search if NewsAPI returns nothing useful.
+func fetchNewsAPIImages(title string) []map[string]interface{} {
+	newsAPIKey := os.Getenv("NEWSAPI_KEY")
+	var images []map[string]interface{}
+
+	if newsAPIKey != "" {
+		query := url.QueryEscape(title)
+		apiURL := fmt.Sprintf("https://newsapi.org/v2/everything?q=%s&pageSize=6&sortBy=relevancy&language=en&apiKey=%s", query, newsAPIKey)
+
+		resp, err := http.Get(apiURL) //nolint:gosec
+		if err == nil {
+			defer resp.Body.Close()
+			var result struct {
+				Articles []struct {
+					URLToImage string `json:"urlToImage"`
+					Title      string `json:"title"`
+					URL        string `json:"url"`
+				} `json:"articles"`
+			}
+			if json.NewDecoder(resp.Body).Decode(&result) == nil {
+				for i, a := range result.Articles {
+					if a.URLToImage != "" && strings.HasPrefix(a.URLToImage, "http") {
+						images = append(images, map[string]interface{}{
+							"url":         a.URLToImage,
+							"description": a.Title,
+							"source_url":  a.URL,
+							"type":        "news",
+							"source":      "newsapi",
+							"index":       i + 1,
+						})
+					}
+					if len(images) >= 3 {
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// If we got images from NewsAPI, return them
+	if len(images) > 0 {
+		return images
+	}
+
+	// Last resort: Wikimedia Commons free-use images via their search API
+	query := url.QueryEscape(title)
+	wikiURL := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=%s&gsrlimit=3&prop=pageimages&piprop=original&format=json", query)
+	resp, err := http.Get(wikiURL) //nolint:gosec
+	if err == nil {
+		defer resp.Body.Close()
+		var result struct {
+			Query struct {
+				Pages map[string]struct {
+					Title    string `json:"title"`
+					Original struct {
+						Source string `json:"source"`
+					} `json:"original"`
+				} `json:"pages"`
+			} `json:"query"`
+		}
+		if json.NewDecoder(resp.Body).Decode(&result) == nil {
+			i := 1
+			for _, page := range result.Query.Pages {
+				if page.Original.Source != "" {
+					images = append(images, map[string]interface{}{
+						"url":         page.Original.Source,
+						"description": page.Title,
+						"type":        "news",
+						"source":      "wikipedia",
+						"index":       i,
+					})
+					i++
+					if i > 3 {
+						break
+					}
+				}
+			}
+		}
+	}
+
+	return images
 }
 
 
