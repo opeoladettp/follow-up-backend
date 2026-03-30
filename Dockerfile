@@ -13,6 +13,9 @@ RUN go mod download
 
 COPY . .
 
+# Ensure go.mod is tidy before building
+RUN go mod tidy
+
 # Build with optimisations: strip debug info, disable CGO
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-s -w" -o main .
