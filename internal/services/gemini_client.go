@@ -106,7 +106,7 @@ func (g *GeminiClient) generateContentOnce(prompt string) (string, error) {
 		},
 		GenerationConfig: &GenerationConfig{
 			Temperature:     0.7,
-			MaxOutputTokens: 2048,
+			MaxOutputTokens: 4096,
 			TopP:            0.95,
 			TopK:            40,
 		},

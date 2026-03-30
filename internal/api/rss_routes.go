@@ -429,14 +429,16 @@ func generateStoryMedia(aiService *services.AIService) gin.HandlerFunc {
 }
 
 // fetchNewsAPIImages queries NewsAPI for articles matching the title and returns their images.
-// Falls back to a Wikimedia Commons search if NewsAPI returns nothing useful.
+// Uses Gemini to generate a targeted search query for better relevance.
 func fetchNewsAPIImages(title string) []map[string]interface{} {
 	newsAPIKey := os.Getenv("NEWSAPI_KEY")
 	var images []map[string]interface{}
 
 	if newsAPIKey != "" {
-		query := url.QueryEscape(title)
-		apiURL := fmt.Sprintf("https://newsapi.org/v2/everything?q=%s&pageSize=6&sortBy=relevancy&language=en&apiKey=%s", query, newsAPIKey)
+		// Use a focused search query — extract key nouns from title
+		searchQuery := extractSearchQuery(title)
+		query := url.QueryEscape(searchQuery)
+		apiURL := fmt.Sprintf("https://newsapi.org/v2/everything?q=%s&pageSize=9&sortBy=relevancy&language=en&apiKey=%s", query, newsAPIKey)
 
 		resp, err := http.Get(apiURL) //nolint:gosec
 		if err == nil {
@@ -468,13 +470,12 @@ func fetchNewsAPIImages(title string) []map[string]interface{} {
 		}
 	}
 
-	// If we got images from NewsAPI, return them
 	if len(images) > 0 {
 		return images
 	}
 
-	// Last resort: Wikimedia Commons free-use images via their search API
-	query := url.QueryEscape(title)
+	// Fallback: Wikimedia Commons
+	query := url.QueryEscape(extractSearchQuery(title))
 	wikiURL := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=%s&gsrlimit=3&prop=pageimages&piprop=original&format=json", query)
 	resp, err := http.Get(wikiURL) //nolint:gosec
 	if err == nil {
@@ -510,6 +511,31 @@ func fetchNewsAPIImages(title string) []map[string]interface{} {
 	}
 
 	return images
+}
+
+// extractSearchQuery pulls the most meaningful search terms from a headline
+func extractSearchQuery(title string) string {
+	// Remove common press release prefixes
+	prefixes := []string{
+		"STATEHOUSE PRESS RELEASE", "PRESS RELEASE", "BREAKING:", "BREAKING NEWS:",
+		"STATEMENT:", "OFFICIAL:", "UPDATE:",
+	}
+	q := title
+	for _, p := range prefixes {
+		if strings.HasPrefix(strings.ToUpper(q), p) {
+			q = strings.TrimSpace(q[len(p):])
+		}
+	}
+	// Truncate to first 80 chars for a focused query
+	if len(q) > 80 {
+		// Cut at last space before 80
+		if idx := strings.LastIndex(q[:80], " "); idx > 0 {
+			q = q[:idx]
+		} else {
+			q = q[:80]
+		}
+	}
+	return q
 }
 
 

@@ -87,13 +87,19 @@ export default function ReportEditor({ headline, onBack, user, onStoryCreated })
       addThinkingStep({ type: 'info', message: 'Analyzing headline and context...' })
       await new Promise(resolve => setTimeout(resolve, 800))
       
-      addThinkingStep({ type: 'info', message: 'Researching related information...' })
+      addThinkingStep({ type: 'info', message: 'Researching background and key figures...' })
+      await new Promise(resolve => setTimeout(resolve, 700))
+      
+      addThinkingStep({ type: 'info', message: 'Gathering context and historical significance...' })
       await new Promise(resolve => setTimeout(resolve, 600))
       
-      addThinkingStep({ type: 'info', message: 'Structuring news report format...' })
+      addThinkingStep({ type: 'info', message: 'Analyzing reactions and expert perspectives...' })
       await new Promise(resolve => setTimeout(resolve, 500))
       
-      addThinkingStep({ type: 'info', message: 'Generating script with Gemini AI...' })
+      addThinkingStep({ type: 'info', message: 'Structuring broadcast-ready script...' })
+      await new Promise(resolve => setTimeout(resolve, 400))
+      
+      addThinkingStep({ type: 'info', message: 'Generating full script with Gemini AI...' })
       
       const data = await api.generateNewsReport({
         headline_id: headline.id,

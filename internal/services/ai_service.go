@@ -273,39 +273,53 @@ func (a *AIService) GenerateNewsReport(title, description, url, authorName strin
 		correspondentName = "your correspondent"
 	}
 
-	prompt := fmt.Sprintf(`You are a professional broadcast news correspondent named %s, writing a polished on-air script for a world-class media outlet.
+	isTwitterSource := strings.Contains(url, "x.com") || strings.Contains(url, "twitter.com")
+
+	var researchInstruction string
+	if isTwitterSource {
+		researchInstruction = `This story originated from a social media post. You MUST:
+- Expand far beyond the tweet using your full knowledge of the topic, key figures, and context
+- Draw on what you know about reactions from prominent voices, commentators, and institutions
+- Reference relevant historical context, previous statements, or related events
+- Treat this as a full investigative news report, not a social media summary`
+	} else {
+		researchInstruction = `This story is from a news source. You MUST:
+- Expand significantly beyond the provided description using your full knowledge
+- Provide deep background on the key figures, institutions, and events mentioned
+- Draw on related developments, historical context, and expert perspectives
+- Reference comparable events or precedents where relevant`
+	}
+
+	prompt := fmt.Sprintf(`You are a senior broadcast journalist named %s at a world-class international news outlet like BBC World Service or CNN International.
 
 HEADLINE: %s
 STORY DETAILS: %s
 
-Write a complete, broadcast-ready news script following these rules:
+%s
 
-TONE & STYLE:
-- Natural, authoritative, and conversational — like BBC World News or CNN International
-- Vary the opening based on the story type: use "Good evening", "Good morning", "Breaking news", "In a significant development", "Turning now to", etc. — choose what fits the story naturally
-- Never start every script with "breaking news" — most stories are not breaking
-- No markdown formatting — no asterisks (*), no bold (**), no bullet points, no headers
-- Plain text only, written exactly as it would be spoken on air
-- Do not include stage directions, cues, or formatting symbols
+MANDATORY REQUIREMENTS — EVERY SINGLE ONE MUST BE MET:
+
+LENGTH: Write AT LEAST 8 full paragraphs. Each paragraph must be 3 to 5 sentences. This is non-negotiable. Do not stop early. Do not summarise. Write every paragraph in full.
 
 STRUCTURE:
-1. Opening line — natural intro that fits the story's tone and urgency
-2. Lead paragraph — the core facts of the story, clearly stated
-3. Context — 2-3 sentences of relevant background
-4. Significance — why this matters, what the implications are
-5. Reaction — how stakeholders or the public are responding (no fabricated quotes)
-6. What's next — what to watch for going forward
-7. Sign-off — "Reporting for [outlet], I'm %s. Back to you."
+Paragraph 1 — Opening: Varied, natural intro matching the story tone. Choose from: "Good evening", "Good morning", "In a significant development", "Turning now to", "A major story is developing" — never default to "breaking news" unless truly urgent.
+Paragraph 2 — Core facts: Who, what, when, where, why — clearly and fully stated.
+Paragraph 3 — Key figures: Expand on who the people and institutions involved are, their roles and significance.
+Paragraph 4 — Background: What led to this, historical significance, relevant precedents.
+Paragraph 5 — Wider significance: Why this matters nationally and internationally.
+Paragraph 6 — Reactions: How different groups, communities, and institutions are responding.
+Paragraph 7 — Analysis: What observers, analysts, and commentators are noting about implications.
+Paragraph 8 — What next: Upcoming developments, unanswered questions, what to watch.
+Closing paragraph — Sign-off: "Reporting for [outlet], I'm %s."
 
-STRICT RULES:
-- No asterisks, no markdown, no symbols
-- No fabricated direct quotes from named individuals
-- No mention of source URLs
-- Write exactly as spoken — no parenthetical notes
-- 5 to 7 paragraphs total
+FORMAT — ABSOLUTE RULES:
+- Plain text only. Zero asterisks, zero bold, zero bullet points, zero headers, zero markdown of any kind.
+- Write exactly as spoken on air. No stage directions. No parenthetical notes.
+- No fabricated direct quotes from named individuals.
+- No mention of source URLs.
 
-Write the complete script now:`,
-		correspondentName, title, description, correspondentName)
+Write the complete, full-length script now. Do not truncate:`,
+		correspondentName, title, description, researchInstruction, correspondentName)
 
 	script, err := a.geminiClient.GenerateContent(prompt)
 	if err != nil {
@@ -313,14 +327,14 @@ Write the complete script now:`,
 		script = a.generateFallbackScript(title, description, "your correspondent", correspondentName)
 	}
 
-	// Strip any residual markdown symbols
 	script = a.stripImagePrompts(script)
 	script = stripMarkdown(script)
 
 	logrus.WithFields(logrus.Fields{
-		"latency": time.Since(startTime).Milliseconds(),
-		"title":   title,
-		"author":  authorName,
+		"latency_ms":    time.Since(startTime).Milliseconds(),
+		"title":         title,
+		"author":        authorName,
+		"script_length": len(script),
 	}).Info("News report generated")
 
 	return script, nil
