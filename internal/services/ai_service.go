@@ -256,64 +256,61 @@ func (a *AIService) stripMarkdown(text string) string {
 // GenerateNewsReport generates a comprehensive news report script from a headline using Gemini API
 func (a *AIService) GenerateNewsReport(title, description, url, authorName string) (string, error) {
 	startTime := time.Now()
-	
-	correspondentIntro := "I'm your correspondent"
-	if authorName != "" {
-		correspondentIntro = fmt.Sprintf("I'm %s", authorName)
+
+	correspondentName := authorName
+	if correspondentName == "" {
+		correspondentName = "your correspondent"
 	}
-	
-	// Create a comprehensive prompt for Gemini
-	prompt := fmt.Sprintf(`You are a professional news correspondent named %s writing a news report script.
+
+	prompt := fmt.Sprintf(`You are a professional broadcast news correspondent named %s, writing a polished on-air script for a world-class media outlet.
 
 HEADLINE: %s
-DESCRIPTION: %s
+STORY DETAILS: %s
 
-Generate a comprehensive, engaging news report script that includes:
+Write a complete, broadcast-ready news script following these rules:
 
-1. OPENING: Start with "Good evening, %s, reporting live with breaking news."
+TONE & STYLE:
+- Natural, authoritative, and conversational — like BBC World News or CNN International
+- Vary the opening based on the story type: use "Good evening", "Good morning", "Breaking news", "In a significant development", "Turning now to", etc. — choose what fits the story naturally
+- Never start every script with "breaking news" — most stories are not breaking
+- No markdown formatting — no asterisks (*), no bold (**), no bullet points, no headers
+- Plain text only, written exactly as it would be spoken on air
+- Do not include stage directions, cues, or formatting symbols
 
-2. MAIN STORY: Present the headline and key details from the description
+STRUCTURE:
+1. Opening line — natural intro that fits the story's tone and urgency
+2. Lead paragraph — the core facts of the story, clearly stated
+3. Context — 2-3 sentences of relevant background
+4. Significance — why this matters, what the implications are
+5. Reaction — how stakeholders or the public are responding (no fabricated quotes)
+6. What's next — what to watch for going forward
+7. Sign-off — "Reporting for [outlet], I'm %s. Back to you."
 
-3. BACKGROUND CONTEXT: Provide relevant background information about this topic (2-3 sentences)
+STRICT RULES:
+- No asterisks, no markdown, no symbols
+- No fabricated direct quotes from named individuals
+- No mention of source URLs
+- Write exactly as spoken — no parenthetical notes
+- 5 to 7 paragraphs total
 
-4. ANALYSIS: Explain why this matters and what the implications are (2-3 sentences)
+Write the complete script now:`,
+		correspondentName, title, description, correspondentName)
 
-5. REACTIONS: Describe how people and experts are responding to this news (use phrases like "Experts are noting..." or "Public reaction has been..." - do NOT make up specific quotes)
-
-6. IMPLICATIONS: Discuss the broader significance and what might happen next (2-3 sentences)
-
-7. CLOSING: End with "Our team will continue monitoring this story as it develops. We'll bring you updates as soon as new information becomes available. This is %s, and I'll be following this story closely. Stay with us for more updates."
-
-IMPORTANT GUIDELINES:
-- Write in a professional news anchor style
-- Be factual and balanced
-- Do NOT include the source URL in the script
-- Do NOT make up specific quotes from named individuals
-- Do NOT include any image prompts or image generation instructions
-- Keep the tone authoritative but accessible
-- Make it engaging and informative
-- Length: Aim for 6-8 paragraphs
-
-Generate the complete news report script now:`, 
-		authorName, title, description, correspondentIntro, authorName)
-
-	// Call Gemini API
 	script, err := a.geminiClient.GenerateContent(prompt)
 	if err != nil {
 		logrus.WithError(err).Error("Failed to generate report with Gemini API")
-		// Fallback to template if API fails
-		script = a.generateFallbackScript(title, description, correspondentIntro, authorName)
+		script = a.generateFallbackScript(title, description, "your correspondent", correspondentName)
 	}
 
-	// Strip any image prompts that Gemini might have included
+	// Strip any residual markdown symbols
 	script = a.stripImagePrompts(script)
+	script = stripMarkdown(script)
 
 	logrus.WithFields(logrus.Fields{
 		"latency": time.Since(startTime).Milliseconds(),
 		"title":   title,
 		"author":  authorName,
-		"method":  "gemini_api",
-	}).Info("News report generated with Gemini")
+	}).Info("News report generated")
 
 	return script, nil
 }
@@ -927,4 +924,16 @@ func (a *AIService) GenerateStoryImagesWithImagen(title, description string) ([]
 	}
 
 	return results, nil
+}
+
+// stripMarkdown removes markdown formatting symbols so scripts read cleanly on air
+func stripMarkdown(s string) string {
+	re := regexp.MustCompile(`\*{1,2}([^*\n]+)\*{1,2}`)
+	s = re.ReplaceAllString(s, "$1")
+	re = regexp.MustCompile(`_{1,2}([^_\n]+)_{1,2}`)
+	s = re.ReplaceAllString(s, "$1")
+	re = regexp.MustCompile(`(?m)^#{1,6}\s+`)
+	s = re.ReplaceAllString(s, "")
+	s = strings.ReplaceAll(s, "*", "")
+	return strings.TrimSpace(s)
 }
