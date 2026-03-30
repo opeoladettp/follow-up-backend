@@ -36,7 +36,6 @@ export default function RSSFeedManager({ user }) {
         await api.updateRSSFeed(editingId, formData)
       } else {
         const result = await api.addRSSFeed(formData)
-        // Show resolved URL if an X handle was converted
         if (result.resolved_url && result.resolved_url !== formData.url) {
           alert(`Feed added. X handle resolved to:\n${result.resolved_url}`)
         }
@@ -45,7 +44,8 @@ export default function RSSFeedManager({ user }) {
       resetForm()
     } catch (error) {
       console.error('Failed to save feed:', error)
-      alert('Failed to save feed. Please try again.')
+      const msg = error?.response?.data?.error || 'Failed to save feed. Please try again.'
+      alert(msg)
     }
   }
 

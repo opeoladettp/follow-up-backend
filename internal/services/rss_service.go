@@ -156,7 +156,7 @@ func (r *RSSService) AddRSSFeed(feedURL, feedName, category string) (*models.RSS
 
 	var existing models.RSSFeed
 	if err := r.col().FindOne(ctx, bson.M{"url": feedURL}).Decode(&existing); err == nil {
-		return nil, fmt.Errorf("feed already exists")
+		return nil, fmt.Errorf("this feed already exists (added as: %s)", feedURL)
 	}
 
 	if category == "" {
