@@ -132,17 +132,17 @@ export default function RSSFeedManager({ user }) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Feed URL
+                  Feed URL or X/Twitter Handle
                 </label>
                 <input
                   type="text"
                   value={formData.url}
                   onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                   className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-gray-900 dark:focus:ring-white focus:border-transparent text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-                  placeholder="https://feeds.bbci.co.uk/news/rss.xml"
+                  placeholder="https://feeds.bbci.co.uk/... or @BBCBreaking"
                   required
                 />
-                <p className="text-xs text-gray-400 mt-1">Enter a standard RSS/Atom feed URL</p>
+                <p className="text-xs text-gray-400 mt-1">Enter an RSS URL or an X/Twitter handle (e.g. @BBCBreaking)</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

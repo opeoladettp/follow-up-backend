@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"os"
 	"strings"
 	"time"
 
@@ -181,28 +182,36 @@ func (r *RSSService) AddRSSFeed(feedURL, feedName, category string) (*models.RSS
 }
 
 // normalizeToRSSURL validates and normalises a feed URL.
-// Twitter/X handles are rejected — the API costs $200/month.
+// Twitter/X handles are routed through the self-hosted RSSHub instance (RSSHUB_URL env var).
 func normalizeToRSSURL(input string) (string, error) {
 	input = strings.TrimSpace(input)
 
-	// Reject Twitter/X handles and URLs
-	isTwitter := strings.HasPrefix(input, "@") ||
-		strings.Contains(input, "twitter.com/") ||
-		strings.Contains(input, "x.com/") ||
-		strings.HasPrefix(input, "twitter://")
-	if isTwitter {
-		return "", fmt.Errorf("Twitter/X feeds are not supported — the Twitter API costs $200/month. Please use a standard RSS feed URL instead (e.g. from a news website or blog)")
+	rsshubBase := os.Getenv("RSSHUB_URL")
+	if rsshubBase == "" {
+		rsshubBase = "https://rsshub.app"
+	}
+	rsshubBase = strings.TrimRight(rsshubBase, "/")
+
+	// @handle or bare word without dots — treat as Twitter handle
+	if strings.HasPrefix(input, "@") {
+		handle := strings.TrimPrefix(input, "@")
+		if handle != "" {
+			return rsshubBase + "/twitter/user/" + handle, nil
+		}
+	}
+
+	// twitter.com or x.com profile URL
+	if strings.Contains(input, "twitter.com/") || strings.Contains(input, "x.com/") {
+		parts := strings.Split(strings.TrimRight(input, "/"), "/")
+		handle := parts[len(parts)-1]
+		if handle != "" {
+			return rsshubBase + "/twitter/user/" + handle, nil
+		}
 	}
 
 	// Already a proper URL
 	if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
 		return input, nil
-	}
-
-	// Bare handle with no dots — likely a social handle
-	handle := strings.TrimPrefix(input, "@")
-	if !strings.Contains(handle, ".") && handle != "" {
-		return "", fmt.Errorf("'%s' looks like a social media handle. Twitter/X feeds are not supported. Please provide a full RSS feed URL", input)
 	}
 
 	// Bare domain without scheme
@@ -322,11 +331,6 @@ func (r *RSSService) FetchAllHeadlines() ([]Headline, error) {
 func (r *RSSService) fetchFromURLs(urls []string, _ map[string]string) ([]Headline, error) {
 	var all []Headline
 	for _, feedURL := range urls {
-		// Skip any legacy twitter:// entries still in DB
-		if strings.HasPrefix(feedURL, "twitter://") {
-			logrus.WithField("url", feedURL).Warn("Skipping twitter:// feed — Twitter API not supported")
-			continue
-		}
 		items, err := r.fetchHeadlinesFromFeed(feedURL, "")
 		if err != nil {
 			logrus.WithError(err).WithField("feed", feedURL).Warn("Failed to fetch headlines from feed, skipping")
