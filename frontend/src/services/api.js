@@ -134,6 +134,11 @@ export const api = {
     return response.data
   },
 
+  refreshHeadlines: async () => {
+    const response = await apiClient.post('/rss/refresh-headlines')
+    return response.data
+  },
+
   updateReportImages: async (reportId, images) => {
     const response = await apiClient.patch(`/rss/report/${reportId}/images`, { images })
     return response.data

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Trash2, Edit2, Check, X, Rss, AlertCircle } from 'lucide-react'
 import { api } from '../services/api'
 
-export default function RSSFeedManager({ user }) {
+export default function RSSFeedManager({ user, onFeedChanged }) {
   const [feeds, setFeeds] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -42,6 +42,7 @@ export default function RSSFeedManager({ user }) {
       }
       await loadFeeds()
       resetForm()
+      if (onFeedChanged) onFeedChanged()
     } catch (error) {
       console.error('Failed to save feed:', error)
       const msg = error?.response?.data?.error || 'Failed to save feed. Please try again.'
@@ -54,6 +55,7 @@ export default function RSSFeedManager({ user }) {
     try {
       await api.deleteRSSFeed(id)
       await loadFeeds()
+      if (onFeedChanged) onFeedChanged()
     } catch (error) {
       console.error('Failed to delete feed:', error)
       alert('Failed to delete feed. Please try again.')

@@ -42,11 +42,15 @@ function App() {
     }
   }, [])
 
-  const loadHeadlines = async () => {
-    if (headlinesCache) return // Already cached
+  const loadHeadlines = async (force = false) => {
+    if (headlinesCache && !force) return // Already cached
     
     try {
       setHeadlinesLoading(true)
+      // Bust server-side cache first if forcing
+      if (force) {
+        try { await api.refreshHeadlines() } catch {}
+      }
       const data = await api.getRSSHeadlines()
       setHeadlinesCache(data.headlines || [])
     } catch (error) {
@@ -231,7 +235,7 @@ function App() {
               </div>
             </div>
           ) : mode === 'rss-manager' ? (
-            <RSSFeedManager user={user} />
+            <RSSFeedManager user={user} onFeedChanged={() => loadHeadlines(true)} />
           ) : mode === 'admin' ? (
             <AdminPanel />
           ) : (
