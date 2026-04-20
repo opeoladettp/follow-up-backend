@@ -7,7 +7,6 @@ import HeadlinesBrowser from './components/HeadlinesBrowser'
 import ReportEditor from './components/ReportEditor'
 import RSSFeedManager from './components/RSSFeedManager'
 import AdminPanel from './components/AdminPanel'
-import HeygenSettings from './components/HeygenSettings'
 import { api } from './services/api'
 import './styles/brand.css'
 
@@ -17,20 +16,18 @@ function App() {
   const [selectedStory, setSelectedStory] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [mode, setMode] = useState('chat') // 'chat', 'headlines', 'editor', 'followup', 'rss-manager', 'admin', 'heygen-settings'
+  const [mode, setMode] = useState('chat') // 'chat', 'headlines', 'editor', 'followup', 'rss-manager', 'admin'
   const [selectedHeadline, setSelectedHeadline] = useState(null)
   const [headlinesCache, setHeadlinesCache] = useState(null)
   const [headlinesLoading, setHeadlinesLoading] = useState(false)
 
   useEffect(() => {
-    // Check if user is already logged in
     const storedUser = localStorage.getItem('user')
     if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser)
         setUser(parsedUser)
         loadStories()
-        // Preload headlines on app start
         loadHeadlines()
       } catch (error) {
         console.error('Failed to parse stored user:', error)
@@ -44,11 +41,9 @@ function App() {
   }, [])
 
   const loadHeadlines = async (force = false) => {
-    if (headlinesCache && !force) return // Already cached
-    
+    if (headlinesCache && !force) return
     try {
       setHeadlinesLoading(true)
-      // Bust server-side cache first if forcing
       if (force) {
         try { await api.refreshHeadlines() } catch {}
       }
@@ -149,26 +144,12 @@ function App() {
     setMode('admin')
   }
 
-  const handleHeygenSettings = () => {
-    setMode('heygen-settings')
-  }
-
-  const handleHeygenSaved = (updates) => {
-    // Merge saved HeyGen IDs back into the local user state so the
-    // settings panel reflects the latest values without a full reload.
-    setUser(prev => ({ ...prev, ...updates }))
-    const stored = JSON.parse(localStorage.getItem('user') || '{}')
-    localStorage.setItem('user', JSON.stringify({ ...stored, ...updates }))
-  }
-
-  // Show login screen if not authenticated
   if (!user) {
     return <GoogleAuth onLoginSuccess={handleLoginSuccess} />
   }
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Gemini-style Sidebar */}
       <GeminiSidebar
         stories={stories}
         selectedStory={selectedStory}
@@ -177,7 +158,6 @@ function App() {
         onBrowseHeadlines={handleBrowseHeadlines}
         onFollowUpStories={handleFollowUpStories}
         onManageUsers={handleManageUsers}
-        onHeygenSettings={handleHeygenSettings}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         loading={loading}
@@ -186,7 +166,6 @@ function App() {
         onLogout={handleLogout}
       />
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Navigation Bar */}
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between">
@@ -198,9 +177,8 @@ function App() {
             {mode === 'followup' && 'Follow-up Stories'}
             {mode === 'rss-manager' && 'RSS Feed Management'}
             {mode === 'admin' && 'User Management'}
-            {mode === 'heygen-settings' && 'Avatar & Voice Settings'}
           </h2>
-          
+
           {(user.role === 'editor' || user.role === 'admin') && mode === 'headlines' && (
             <button
               onClick={handleManageRSSFeeds}
@@ -210,7 +188,7 @@ function App() {
               <span className="sm:hidden">Manage</span>
             </button>
           )}
-          
+
           {mode === 'rss-manager' && (
             <button
               onClick={handleBrowseHeadlines}
@@ -224,10 +202,7 @@ function App() {
         {/* Content Area */}
         <div className="flex-1 overflow-hidden">
           {mode === 'story' && selectedStory ? (
-            <StoryPanel
-              story={selectedStory}
-              onClose={handleNewStory}
-            />
+            <StoryPanel story={selectedStory} onClose={handleNewStory} />
           ) : mode === 'headlines' ? (
             <HeadlinesBrowser
               onSelectHeadline={handleSelectHeadline}
@@ -253,8 +228,6 @@ function App() {
             <RSSFeedManager user={user} onFeedChanged={() => loadHeadlines(true)} />
           ) : mode === 'admin' ? (
             <AdminPanel />
-          ) : mode === 'heygen-settings' ? (
-            <HeygenSettings user={user} onSaved={handleHeygenSaved} />
           ) : (
             <ChatInterface
               onCreateStory={handleCreateStory}

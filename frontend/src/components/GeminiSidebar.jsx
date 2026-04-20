@@ -3,14 +3,11 @@ import {
   Menu, 
   Plus, 
   Newspaper, 
-  X, 
   Rss, 
   Clock,
   ChevronLeft,
-  User,
   LogOut,
-  Shield,
-  Video
+  Shield
 } from 'lucide-react'
 
 export default function GeminiSidebar({ 
@@ -21,7 +18,6 @@ export default function GeminiSidebar({
   onBrowseHeadlines,
   onFollowUpStories,
   onManageUsers,
-  onHeygenSettings,
   isOpen, 
   onToggle, 
   loading, 
@@ -83,7 +79,10 @@ export default function GeminiSidebar({
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
             title={isOpen ? "Collapse sidebar" : "Expand sidebar"}
           >
-            {isOpen ? <ChevronLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" /> : <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" />}
+            {isOpen
+              ? <ChevronLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              : <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+            }
           </button>
         </div>
 
@@ -102,7 +101,7 @@ export default function GeminiSidebar({
               <Plus className="w-5 h-5" />
               <span>New story</span>
             </a>
-            
+
             <a
               href="#"
               onClick={(e) => { e.preventDefault(); onBrowseHeadlines(); }}
@@ -115,7 +114,7 @@ export default function GeminiSidebar({
               <Rss className="w-5 h-5" />
               <span>Headlines</span>
             </a>
-            
+
             <a
               href="#"
               onClick={(e) => { e.preventDefault(); onFollowUpStories(); }}
@@ -143,19 +142,6 @@ export default function GeminiSidebar({
                 <span>Manage Users</span>
               </a>
             )}
-
-            <a
-              href="#"
-              onClick={(e) => { e.preventDefault(); onHeygenSettings?.(); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                currentMode === 'heygen-settings'
-                  ? 'bg-brand-primary text-white font-medium shadow-md'
-                  : 'text-gray-700 dark:text-gray-300 hover:text-white hover:bg-brand-primary'
-              }`}
-            >
-              <Video className="w-5 h-5" />
-              <span>Avatar &amp; Voice</span>
-            </a>
           </div>
         )}
 
@@ -246,7 +232,7 @@ export default function GeminiSidebar({
               className="p-3 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               title="New story"
             >
-              <Plus className="w-5 h-5 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white" />
+              <Plus className="w-5 h-5 text-gray-700 dark:text-gray-300" />
             </a>
             <a
               href="#"
@@ -254,7 +240,7 @@ export default function GeminiSidebar({
               className="p-3 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               title="Headlines"
             >
-              <Rss className="w-5 h-5 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white" />
+              <Rss className="w-5 h-5 text-gray-700 dark:text-gray-300" />
             </a>
             <a
               href="#"
@@ -262,7 +248,7 @@ export default function GeminiSidebar({
               className="p-3 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               title="Follow-up stories"
             >
-              <Clock className="w-5 h-5 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white" />
+              <Clock className="w-5 h-5 text-gray-700 dark:text-gray-300" />
             </a>
           </div>
         )}

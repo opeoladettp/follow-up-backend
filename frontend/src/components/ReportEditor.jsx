@@ -23,6 +23,11 @@ export default function ReportEditor({ headline, onBack, user, onStoryCreated })
   const [voiceFile, setVoiceFile] = useState(null)
   const [voiceAudioUrl, setVoiceAudioUrl] = useState(null)
   const [cloningVoice, setCloningVoice] = useState(false)
+  // HeyGen IDs — pre-filled from saved user profile, editable inline
+  const [heygenAvatarId, setHeygenAvatarId] = useState(user?.heygen_avatar_id || '')
+  const [heygenVoiceId, setHeygenVoiceId] = useState(user?.heygen_voice_id || '')
+  const [savingHeygenIds, setSavingHeygenIds] = useState(false)
+  const [heygenIdsSaved, setHeygenIdsSaved] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [reportId, setReportId] = useState(null)
@@ -350,6 +355,15 @@ export default function ReportEditor({ headline, onBack, user, onStoryCreated })
       console.log('Starting video generation for report:', reportId)
       setVideoStatus('processing')
       setVideoErrorMsg('')
+
+      // Persist HeyGen IDs to user profile (fire-and-forget, non-blocking)
+      if (heygenAvatarId.trim() || heygenVoiceId.trim()) {
+        setSavingHeygenIds(true)
+        api.updateHeygenSettings(heygenAvatarId.trim(), heygenVoiceId.trim())
+          .then(() => { setHeygenIdsSaved(true); setTimeout(() => setHeygenIdsSaved(false), 3000) })
+          .catch(err => console.warn('Failed to save HeyGen IDs:', err))
+          .finally(() => setSavingHeygenIds(false))
+      }
       
       const avatarURL = avatarPreview || 'https://placeholder.com/avatar.jpg'
 
@@ -622,6 +636,20 @@ export default function ReportEditor({ headline, onBack, user, onStoryCreated })
                     <input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
                   </label>
                 </div>
+                {/* HeyGen Avatar ID — for users with a custom HeyGen avatar */}
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    HeyGen Avatar ID <span className="font-normal">(optional — overrides default avatar)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={heygenAvatarId}
+                    onChange={(e) => setHeygenAvatarId(e.target.value)}
+                    placeholder="e.g. Abigail_expressive_2024112501"
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-mono text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Find in HeyGen Studio → Avatars → your avatar</p>
+                </div>
               </div>
 
               {/* Voice Clone Upload */}
@@ -651,6 +679,30 @@ export default function ReportEditor({ headline, onBack, user, onStoryCreated })
                   </div>
                   <input type="file" accept="audio/*" onChange={(e) => { setVoiceFile(e.target.files[0] || null); setVoiceAudioUrl(null) }} className="hidden" />
                 </label>
+                {/* HeyGen Voice ID — for users with a cloned voice in HeyGen */}
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    HeyGen Voice ID <span className="font-normal">(optional — overrides default voice)</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={heygenVoiceId}
+                      onChange={(e) => setHeygenVoiceId(e.target.value)}
+                      placeholder="e.g. 2d5b0e6cf36f460aa7fc47e3eee4ba54"
+                      className="flex-1 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-mono text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white"
+                    />
+                    {heygenIdsSaved && (
+                      <span className="flex items-center gap-1 text-xs text-green-600 whitespace-nowrap">
+                        <CheckCircle className="w-3.5 h-3.5" /> Saved
+                      </span>
+                    )}
+                    {savingHeygenIds && (
+                      <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin flex-shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Find in HeyGen Studio → Voices → your cloned voice. IDs are saved to your profile on video generation.</p>
+                </div>
               </div>
 
               {/* Action Buttons */}
