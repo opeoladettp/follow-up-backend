@@ -56,6 +56,9 @@ func SetupRSSRoutes(router *gin.RouterGroup, rssService *services.RSSService, ai
 		// Clone voice and generate audio for video
 		rss.POST("/clone-voice", cloneVoice(aiService))
 
+		// HeyGen webhook — called by HeyGen when a video finishes (success or fail)
+		rss.POST("/heygen-webhook", heygenWebhook(aiService, rssService))
+
 		// Proxy remote images (e.g. Google profile pictures) to avoid CORS/referrer issues
 		rss.GET("/proxy-image", proxyImage())
 		
@@ -758,6 +761,65 @@ func updateReportImages(rssService *services.RSSService) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "images updated"})
+	}
+}
+
+// heygenWebhook handles POST callbacks from HeyGen when a video finishes.
+// HeyGen sends callback_id = report_id so we can update the right record.
+func heygenWebhook(aiService *services.AIService, rssService *services.RSSService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// HeyGen validates the endpoint with an OPTIONS request first
+		if c.Request.Method == "OPTIONS" {
+			c.Status(http.StatusOK)
+			return
+		}
+
+		var payload services.HeyGenWebhookPayload
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			logrus.WithError(err).Error("Failed to parse HeyGen webhook payload")
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		logrus.WithFields(logrus.Fields{
+			"event_type":  payload.EventType,
+			"video_id":    payload.EventData.VideoID,
+			"callback_id": payload.EventData.CallbackID,
+			"url":         payload.EventData.URL,
+		}).Info("HeyGen webhook received")
+
+		reportID := payload.EventData.CallbackID
+		if reportID == "" {
+			// No report to update — acknowledge and move on
+			c.Status(http.StatusOK)
+			return
+		}
+
+		switch payload.EventType {
+		case "avatar_video.success":
+			videoURL := payload.EventData.URL
+
+			// Optionally upload to S3 for permanent storage
+			finalURL := aiService.MaybeUploadVideoToS3(videoURL, reportID)
+
+			if err := rssService.UpdateReportVideoStatus(reportID, payload.EventData.VideoID, "completed", finalURL); err != nil {
+				logrus.WithError(err).WithField("report_id", reportID).Error("Failed to update report after HeyGen success")
+			} else {
+				logrus.WithFields(logrus.Fields{
+					"report_id": reportID,
+					"video_url": finalURL,
+				}).Info("Report updated with completed HeyGen video")
+			}
+
+		case "avatar_video.fail":
+			logrus.WithFields(logrus.Fields{
+				"report_id": reportID,
+				"msg":       payload.EventData.Msg,
+			}).Error("HeyGen video generation failed via webhook")
+			_ = rssService.UpdateReportVideoStatus(reportID, payload.EventData.VideoID, "failed", "")
+		}
+
+		c.Status(http.StatusOK)
 	}
 }
 

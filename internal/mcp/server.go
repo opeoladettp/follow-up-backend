@@ -150,7 +150,7 @@ func (s *Server) triggerProductionPipeline(params map[string]interface{}) (inter
 	}
 
 	startTime := time.Now()
-	videoJobID, err := s.aiService.TriggerProductionPipeline(scriptText, identityImage, reportID, "")
+	videoJobID, err := s.aiService.TriggerProductionPipeline(scriptText, identityImage, reportID, "", "", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to trigger production pipeline: %w", err)
 	}

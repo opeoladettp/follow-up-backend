@@ -59,6 +59,17 @@ func main() {
 	// Configure HeyGen (preferred video generator)
 	if heygenKey := os.Getenv("HEYGEN_API_KEY"); heygenKey != "" {
 		aiService.SetHeyGenService(heygenKey, os.Getenv("HEYGEN_AVATAR_ID"), os.Getenv("HEYGEN_VOICE_ID"))
+
+		// Register webhook so HeyGen calls us back when a video is ready.
+		// RAILWAY_PUBLIC_DOMAIN is set automatically by Railway.
+		if railwayDomain := os.Getenv("RAILWAY_PUBLIC_DOMAIN"); railwayDomain != "" {
+			webhookURL := "https://" + railwayDomain + "/api/v1/rss/heygen-webhook"
+			if err := aiService.RegisterHeyGenWebhook(webhookURL); err != nil {
+				logrus.WithError(err).Warn("Failed to register HeyGen webhook — video completion will fall back to polling")
+			}
+		} else {
+			logrus.Warn("RAILWAY_PUBLIC_DOMAIN not set — HeyGen webhook not registered, using polling fallback")
+		}
 	}
 
 	// Configure ElevenLabs if API key is provided (for voice cloning)

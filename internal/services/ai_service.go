@@ -58,6 +58,14 @@ func (a *AIService) SetHeyGenService(apiKey, avatarID, voiceID string) {
 	}
 }
 
+// RegisterHeyGenWebhook registers our webhook URL with HeyGen.
+func (a *AIService) RegisterHeyGenWebhook(webhookURL string) error {
+	if a.heygenService == nil {
+		return fmt.Errorf("HeyGen service not configured")
+	}
+	return a.heygenService.RegisterWebhook(webhookURL)
+}
+
 // SetElevenLabsService configures the ElevenLabs service for voice cloning
 func (a *AIService) SetElevenLabsService(apiKey string) {
 	if apiKey != "" {
@@ -76,6 +84,21 @@ func (a *AIService) SetImagenService(svc *GoogleImagenService) {
 func (a *AIService) SetS3Service(svc *S3Service) {
 	a.s3Service = svc
 	logrus.Info("S3 service configured for image storage")
+}
+
+// MaybeUploadVideoToS3 uploads a video URL to S3 if the service is configured.
+// Returns the S3 URL on success, or the original URL if S3 is unavailable.
+func (a *AIService) MaybeUploadVideoToS3(videoURL, reportID string) string {
+	if a.s3Service == nil || videoURL == "" {
+		return videoURL
+	}
+	s3Key := fmt.Sprintf("videos/%s/video.mp4", reportID)
+	uploaded, err := a.s3Service.DownloadAndUploadVideo(videoURL, s3Key)
+	if err != nil {
+		logrus.WithError(err).Warn("Failed to upload HeyGen video to S3, using HeyGen URL directly")
+		return videoURL
+	}
+	return uploaded
 }
 
 // UploadAvatarToS3 uploads a base64 data URL or remote URL avatar to S3 and returns
@@ -641,7 +664,7 @@ func (a *AIService) TriggerProductionPipeline(scriptText, identityImageURL, repo
 			svc = svc.WithOverrides(heygenAvatarID, heygenVoiceID)
 		}
 
-		videoID, err := svc.GenerateVideo(scriptText)
+		videoID, err := svc.GenerateVideo(scriptText, reportID)
 		if err != nil {
 			logrus.WithError(err).Error("HeyGen video generation failed")
 			return "", fmt.Errorf("HeyGen video generation failed: %w", err)

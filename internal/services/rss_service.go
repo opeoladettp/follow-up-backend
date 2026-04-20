@@ -328,11 +328,6 @@ func (r *RSSService) FetchHeadlinesBySource(source string) ([]Headline, error) {
 			return r.fetchHeadlinesFromFeed(f.URL, f.Category)
 		}
 	}
-	for _, url := range r.seedFeeds {
-		if strings.Contains(url, source) {
-			return r.fetchHeadlinesFromFeed(url, "")
-		}
-	}
 	return nil, fmt.Errorf("source not found: %s", source)
 }
 
