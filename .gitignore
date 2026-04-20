@@ -47,3 +47,8 @@ fix_s3_public_access.go
 # Exclude all root-level markdown except README
 /*.md
 !/README.md
+
+# Temp/scratch files
+response.txt
+*.out
+*.log

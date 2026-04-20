@@ -28,10 +28,9 @@ const (
 )
 
 type RSSService struct {
-	db        *database.MongoDB
-	redis     *database.Redis
-	parser    *gofeed.Parser
-	seedFeeds []string
+	db     *database.MongoDB
+	redis  *database.Redis
+	parser *gofeed.Parser
 }
 
 type Headline struct {
@@ -47,12 +46,11 @@ type Headline struct {
 
 func NewRSSService(db *database.MongoDB, redis *database.Redis, rssFeeds []string) *RSSService {
 	svc := &RSSService{
-		db:        db,
-		redis:     redis,
-		parser:    gofeed.NewParser(),
-		seedFeeds: rssFeeds,
+		db:     db,
+		redis:  redis,
+		parser: gofeed.NewParser(),
 	}
-	svc.seedDefaultFeeds()
+	svc.cleanupLegacyFeeds()
 	return svc
 }
 
@@ -61,51 +59,15 @@ func (r *RSSService) col() *mongo.Collection {
 	return r.db.Database.Collection("rss_feeds")
 }
 
-// seedDefaultFeeds inserts env-configured feeds into DB if collection is empty
-func (r *RSSService) seedDefaultFeeds() {
+// cleanupLegacyFeeds removes broken legacy feed entries on startup
+func (r *RSSService) cleanupLegacyFeeds() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	// Remove any legacy in-memory style feeds (id like "feed-0", "feed-1")
+	// Remove legacy string-ID feeds
 	_, _ = r.col().DeleteMany(ctx, bson.M{"_id": bson.M{"$type": "string"}})
-
-	// Remove broken Twitter/RSSHub feeds that will never work
+	// Remove broken public RSSHub Twitter feeds
 	_, _ = r.col().DeleteMany(ctx, bson.M{"url": bson.M{"$regex": "rsshub\\.app/twitter"}})
 	_, _ = r.col().DeleteMany(ctx, bson.M{"url": bson.M{"$regex": "nitter\\."}})
-
-	count, err := r.col().CountDocuments(ctx, bson.M{})
-	if err != nil || count > 0 {
-		return
-	}
-
-	defaultNames := map[string]string{
-		"reutersagency.com": "Reuters",
-		"bbci.co.uk":        "BBC News",
-		"techcrunch.com":    "TechCrunch",
-		"cnn.com":           "CNN",
-		"theverge.com":      "The Verge",
-	}
-
-	for _, feedURL := range r.seedFeeds {
-		name := feedURL
-		for domain, n := range defaultNames {
-			if strings.Contains(feedURL, domain) {
-				name = n
-				break
-			}
-		}
-		feed := models.RSSFeed{
-			ID:        primitive.NewObjectID(),
-			Name:      name,
-			URL:       feedURL,
-			Category:  "General",
-			Active:    true,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-		_, _ = r.col().InsertOne(ctx, feed)
-	}
-	logrus.Infof("Seeded %d default RSS feeds into DB", len(r.seedFeeds))
 }
 
 // GetRSSFeeds returns all feeds, using Redis cache
@@ -295,16 +257,17 @@ func (r *RSSService) FetchAllHeadlines() ([]Headline, error) {
 	}
 
 	feeds, err := r.GetRSSFeeds()
-	if err != nil || len(feeds) == 0 {
-		return r.fetchFromURLs(r.seedFeeds, map[string]string{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to load feeds from database: %w", err)
+	}
+	if len(feeds) == 0 {
+		return []Headline{}, nil
 	}
 
 	urls := make([]string, 0, len(feeds))
-	meta := make(map[string]models.RSSFeed)
 	for _, f := range feeds {
 		if f.Active {
 			urls = append(urls, f.URL)
-			meta[f.URL] = f
 		}
 	}
 
