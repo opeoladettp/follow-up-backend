@@ -48,10 +48,13 @@ func (a *AIService) SetDIDService(didAPIKey string) {
 }
 
 // SetHeyGenService configures the HeyGen service for video generation
-func (a *AIService) SetHeyGenService(apiKey string) {
+func (a *AIService) SetHeyGenService(apiKey, avatarID, voiceID string) {
 	if apiKey != "" {
-		a.heygenService = NewHeyGenService(apiKey)
-		logrus.Info("HeyGen service configured for video generation")
+		a.heygenService = NewHeyGenService(apiKey, avatarID, voiceID)
+		logrus.WithFields(logrus.Fields{
+			"avatar_id_set": avatarID != "",
+			"voice_id_set":  voiceID != "",
+		}).Info("HeyGen service configured for video generation")
 	}
 }
 
@@ -200,6 +203,35 @@ func (a *AIService) UploadAvatarToS3(avatarURL, reportID string) (string, error)
 	return s3URL, nil
 }
 
+// stripHTML removes all HTML tags and decodes HTML entities from a string.
+// This is used to clean RSS feed descriptions before passing to Gemini.
+func stripHTML(s string) string {
+	// Remove <style>...</style> and <script>...</script> blocks entirely
+	re := regexp.MustCompile(`(?is)<(style|script)[^>]*>.*?</(style|script)>`)
+	s = re.ReplaceAllString(s, " ")
+
+	// Remove all remaining HTML tags
+	re = regexp.MustCompile(`<[^>]+>`)
+	s = re.ReplaceAllString(s, " ")
+
+	// Decode common HTML entities
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	s = strings.ReplaceAll(s, "&quot;", `"`)
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+	s = strings.ReplaceAll(s, "&apos;", "'")
+
+	// Collapse multiple spaces/newlines
+	re = regexp.MustCompile(`[ \t]{2,}`)
+	s = re.ReplaceAllString(s, " ")
+	re = regexp.MustCompile(`\n{3,}`)
+	s = re.ReplaceAllString(s, "\n\n")
+
+	return strings.TrimSpace(s)
+}
+
 // stripImagePrompts removes image prompt sections from the script
 func (a *AIService) stripImagePrompts(script string) string {
 	// Remove [IMAGE PROMPTS FOR GENERATION] section and everything until the next major section
@@ -267,6 +299,10 @@ func (a *AIService) stripMarkdown(text string) string {
 // GenerateNewsReport generates a comprehensive news report script from a headline using Gemini API
 func (a *AIService) GenerateNewsReport(title, description, url, authorName string) (string, error) {
 	startTime := time.Now()
+
+	// Sanitize inputs — RSS descriptions often contain raw HTML tags and entities
+	title = stripHTML(title)
+	description = stripHTML(description)
 
 	correspondentName := authorName
 	if correspondentName == "" {
@@ -592,13 +628,20 @@ func (a *AIService) AnalyzeContent(content string, storyContext *models.StoryLif
 }
 
 // TriggerProductionPipeline generates video using D-ID API and uploads to S3
-func (a *AIService) TriggerProductionPipeline(scriptText, identityImageURL, reportID, voiceAudioURL string) (string, error) {
+func (a *AIService) TriggerProductionPipeline(scriptText, identityImageURL, reportID, voiceAudioURL, heygenAvatarID, heygenVoiceID string) (string, error) {
 	startTime := time.Now()
 
 	// Prefer HeyGen (free trial, better quality)
 	if a.heygenService != nil {
 		logrus.WithField("report_id", reportID).Info("Using HeyGen for video generation")
-		videoID, err := a.heygenService.GenerateVideo(scriptText, "")
+
+		// Per-user IDs override the service-level defaults when provided
+		svc := a.heygenService
+		if heygenAvatarID != "" || heygenVoiceID != "" {
+			svc = svc.WithOverrides(heygenAvatarID, heygenVoiceID)
+		}
+
+		videoID, err := svc.GenerateVideo(scriptText)
 		if err != nil {
 			logrus.WithError(err).Error("HeyGen video generation failed")
 			return "", fmt.Errorf("HeyGen video generation failed: %w", err)

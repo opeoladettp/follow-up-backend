@@ -9,7 +9,8 @@ import {
   ChevronLeft,
   User,
   LogOut,
-  Shield
+  Shield,
+  Video
 } from 'lucide-react'
 
 export default function GeminiSidebar({ 
@@ -20,6 +21,7 @@ export default function GeminiSidebar({
   onBrowseHeadlines,
   onFollowUpStories,
   onManageUsers,
+  onHeygenSettings,
   isOpen, 
   onToggle, 
   loading, 
@@ -141,6 +143,19 @@ export default function GeminiSidebar({
                 <span>Manage Users</span>
               </a>
             )}
+
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); onHeygenSettings?.(); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                currentMode === 'heygen-settings'
+                  ? 'bg-brand-primary text-white font-medium shadow-md'
+                  : 'text-gray-700 dark:text-gray-300 hover:text-white hover:bg-brand-primary'
+              }`}
+            >
+              <Video className="w-5 h-5" />
+              <span>Avatar &amp; Voice</span>
+            </a>
           </div>
         )}
 

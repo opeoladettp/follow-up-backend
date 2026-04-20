@@ -7,6 +7,7 @@ import HeadlinesBrowser from './components/HeadlinesBrowser'
 import ReportEditor from './components/ReportEditor'
 import RSSFeedManager from './components/RSSFeedManager'
 import AdminPanel from './components/AdminPanel'
+import HeygenSettings from './components/HeygenSettings'
 import { api } from './services/api'
 import './styles/brand.css'
 
@@ -16,7 +17,7 @@ function App() {
   const [selectedStory, setSelectedStory] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [mode, setMode] = useState('chat') // 'chat', 'headlines', 'editor', 'followup', 'rss-manager', 'admin'
+  const [mode, setMode] = useState('chat') // 'chat', 'headlines', 'editor', 'followup', 'rss-manager', 'admin', 'heygen-settings'
   const [selectedHeadline, setSelectedHeadline] = useState(null)
   const [headlinesCache, setHeadlinesCache] = useState(null)
   const [headlinesLoading, setHeadlinesLoading] = useState(false)
@@ -148,6 +149,18 @@ function App() {
     setMode('admin')
   }
 
+  const handleHeygenSettings = () => {
+    setMode('heygen-settings')
+  }
+
+  const handleHeygenSaved = (updates) => {
+    // Merge saved HeyGen IDs back into the local user state so the
+    // settings panel reflects the latest values without a full reload.
+    setUser(prev => ({ ...prev, ...updates }))
+    const stored = JSON.parse(localStorage.getItem('user') || '{}')
+    localStorage.setItem('user', JSON.stringify({ ...stored, ...updates }))
+  }
+
   // Show login screen if not authenticated
   if (!user) {
     return <GoogleAuth onLoginSuccess={handleLoginSuccess} />
@@ -164,6 +177,7 @@ function App() {
         onBrowseHeadlines={handleBrowseHeadlines}
         onFollowUpStories={handleFollowUpStories}
         onManageUsers={handleManageUsers}
+        onHeygenSettings={handleHeygenSettings}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         loading={loading}
@@ -184,6 +198,7 @@ function App() {
             {mode === 'followup' && 'Follow-up Stories'}
             {mode === 'rss-manager' && 'RSS Feed Management'}
             {mode === 'admin' && 'User Management'}
+            {mode === 'heygen-settings' && 'Avatar & Voice Settings'}
           </h2>
           
           {(user.role === 'editor' || user.role === 'admin') && mode === 'headlines' && (
@@ -238,6 +253,8 @@ function App() {
             <RSSFeedManager user={user} onFeedChanged={() => loadHeadlines(true)} />
           ) : mode === 'admin' ? (
             <AdminPanel />
+          ) : mode === 'heygen-settings' ? (
+            <HeygenSettings user={user} onSaved={handleHeygenSaved} />
           ) : (
             <ChatInterface
               onCreateStory={handleCreateStory}

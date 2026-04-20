@@ -166,6 +166,15 @@ export const api = {
     return response.data
   },
 
+  // HeyGen settings (per-user avatar & voice)
+  updateHeygenSettings: async (avatarID, voiceID) => {
+    const response = await apiClient.put('/auth/me/heygen', {
+      heygen_avatar_id: avatarID,
+      heygen_voice_id: voiceID,
+    })
+    return response.data
+  },
+
   // Admin - User Management
   getAllUsers: async () => {
     const response = await apiClient.get('/admin/users')

@@ -93,6 +93,34 @@ func (s *AuthService) GetUserByID(userID string) (*models.User, error) {
 	return &user, nil
 }
 
+// UpdateUserHeygenSettings saves a user's HeyGen avatar and voice IDs.
+func (s *AuthService) UpdateUserHeygenSettings(userID, avatarID, voiceID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	objID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return err
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"heygen_avatar_id": avatarID,
+			"heygen_voice_id":  voiceID,
+			"updated_at":       time.Now(),
+		},
+	}
+
+	result, err := s.db.Collection("users").UpdateOne(ctx, bson.M{"_id": objID}, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
 // UpdateUserRole updates a user's role (admin only)
 func (s *AuthService) UpdateUserRole(userID string, newRole models.UserRole) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

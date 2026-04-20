@@ -13,15 +13,17 @@ import (
 
 const (
 	heygenBaseURL = "https://api.heygen.com"
-	// Default stock avatar — "Jared Headshot" (professional, news-friendly)
-	defaultAvatarID = "906e3c1914a441bea7c8d0b1bebbc981"
-	// Default English voice
-	defaultVoiceID = "f38a635bee7a4d1f9b0a654a31d050d2"
+	// Fallback stock avatar — "Jared Headshot" (professional, news-friendly)
+	fallbackAvatarID = "906e3c1914a441bea7c8d0b1bebbc981"
+	// Fallback English voice
+	fallbackVoiceID = "f38a635bee7a4d1f9b0a654a31d050d2"
 )
 
 type HeyGenService struct {
-	apiKey string
-	client *http.Client
+	apiKey   string
+	avatarID string // custom avatar ID (from HEYGEN_AVATAR_ID env var)
+	voiceID  string // custom/cloned voice ID (from HEYGEN_VOICE_ID env var)
+	client   *http.Client
 }
 
 type heygenVideoRequest struct {
@@ -75,18 +77,38 @@ type heygenStatusResponse struct {
 	} `json:"data"`
 }
 
-func NewHeyGenService(apiKey string) *HeyGenService {
+func NewHeyGenService(apiKey, avatarID, voiceID string) *HeyGenService {
 	return &HeyGenService{
-		apiKey: apiKey,
-		client: &http.Client{Timeout: 30 * time.Second},
+		apiKey:   apiKey,
+		avatarID: avatarID,
+		voiceID:  voiceID,
+		client:   &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
+// WithOverrides returns a shallow copy of the service with per-request avatar/voice overrides.
+// Empty strings leave the original value unchanged.
+func (h *HeyGenService) WithOverrides(avatarID, voiceID string) *HeyGenService {
+	copy := *h
+	if avatarID != "" {
+		copy.avatarID = avatarID
+	}
+	if voiceID != "" {
+		copy.voiceID = voiceID
+	}
+	return &copy
+}
+
 // GenerateVideo submits a video generation job and returns the video_id.
-// avatarID is optional — falls back to the default stock avatar.
-func (h *HeyGenService) GenerateVideo(script, avatarID string) (string, error) {
+// Falls back to built-in defaults if avatar/voice IDs are not configured.
+func (h *HeyGenService) GenerateVideo(script string) (string, error) {
+	avatarID := h.avatarID
 	if avatarID == "" {
-		avatarID = defaultAvatarID
+		avatarID = fallbackAvatarID
+	}
+	voiceID := h.voiceID
+	if voiceID == "" {
+		voiceID = fallbackVoiceID
 	}
 
 	// HeyGen has a 5000 char limit per input_text; truncate gracefully
@@ -104,7 +126,7 @@ func (h *HeyGenService) GenerateVideo(script, avatarID string) (string, error) {
 				},
 				Voice: heygenVoice{
 					Type:      "text",
-					VoiceID:   defaultVoiceID,
+					VoiceID:   voiceID,
 					InputText: script,
 					Speed:     1.0,
 				},

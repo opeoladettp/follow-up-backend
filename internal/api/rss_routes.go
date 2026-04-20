@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"followupmedium-newsroom/internal/services"
@@ -15,7 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func SetupRSSRoutes(router *gin.RouterGroup, rssService *services.RSSService, aiService *services.AIService) {
+func SetupRSSRoutes(router *gin.RouterGroup, rssService *services.RSSService, aiService *services.AIService, authService *services.AuthService) {
 	rss := router.Group("/rss")
 	{
 		// RSS Feed Management (Editor/Admin only - add middleware in production)
@@ -50,7 +51,7 @@ func SetupRSSRoutes(router *gin.RouterGroup, rssService *services.RSSService, ai
 		rss.POST("/save-report", saveReport(rssService))
 		
 		// Generate video from report
-		rss.POST("/generate-video", generateVideo(aiService, rssService))
+		rss.POST("/generate-video", generateVideo(aiService, rssService, authService))
 		
 		// Clone voice and generate audio for video
 		rss.POST("/clone-voice", cloneVoice(aiService))
@@ -162,7 +163,7 @@ func saveReport(rssService *services.RSSService) gin.HandlerFunc {
 	}
 }
 
-func generateVideo(aiService *services.AIService, rssService *services.RSSService) gin.HandlerFunc {
+func generateVideo(aiService *services.AIService, rssService *services.RSSService, authService *services.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request struct {
 			ReportID      string `json:"report_id" binding:"required"`
@@ -177,6 +178,15 @@ func generateVideo(aiService *services.AIService, rssService *services.RSSServic
 			return
 		}
 
+		// Look up the requesting user's HeyGen avatar/voice IDs
+		var userHeygenAvatarID, userHeygenVoiceID string
+		if userID, exists := c.Get("userID"); exists {
+			if u, err := authService.GetUserByID(userID.(string)); err == nil {
+				userHeygenAvatarID = u.HeygenAvatarID
+				userHeygenVoiceID = u.HeygenVoiceID
+			}
+		}
+
 		// For HeyGen, skip S3 avatar upload — HeyGen uses its own stock avatars
 		avatarURL, err := aiService.PrepareAvatarURL(request.AvatarURL, request.ReportID)
 		if err != nil {
@@ -185,12 +195,14 @@ func generateVideo(aiService *services.AIService, rssService *services.RSSServic
 			return
 		}
 		logrus.WithFields(logrus.Fields{
-			"report_id":  request.ReportID,
-			"avatar_url": avatarURL,
-		}).Info("Avatar URL ready for D-ID")
+			"report_id":         request.ReportID,
+			"avatar_url":        avatarURL,
+			"heygen_avatar_set": userHeygenAvatarID != "",
+			"heygen_voice_set":  userHeygenVoiceID != "",
+		}).Info("Avatar URL ready for video generation")
 
 		// Trigger video generation pipeline
-		videoJobID, err := aiService.TriggerProductionPipeline(request.Script, avatarURL, request.ReportID, request.VoiceAudioURL)
+		videoJobID, err := aiService.TriggerProductionPipeline(request.Script, avatarURL, request.ReportID, request.VoiceAudioURL, userHeygenAvatarID, userHeygenVoiceID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -416,9 +428,9 @@ func generateStoryMedia(aiService *services.AIService) gin.HandlerFunc {
 		// Try Google Imagen first
 		images, err := aiService.GenerateStoryImagesWithImagen(request.Title, request.Description)
 		if err != nil {
-			logrus.WithError(err).Warn("Imagen unavailable, falling back to NewsAPI images")
-			// Fall back to NewsAPI — real news photos relevant to the story
-			images = fetchNewsAPIImages(request.Title)
+			logrus.WithError(err).Warn("Imagen unavailable, falling back to web image search")
+			// Pass both title and script so the search can extract better keywords
+			images = fetchNewsAPIImages(request.Title, request.Description)
 		}
 
 		c.JSON(http.StatusOK, gin.H{
@@ -428,15 +440,16 @@ func generateStoryMedia(aiService *services.AIService) gin.HandlerFunc {
 	}
 }
 
-// fetchNewsAPIImages queries NewsAPI for articles matching the title and returns their images.
-// Uses Gemini to generate a targeted search query for better relevance.
-func fetchNewsAPIImages(title string) []map[string]interface{} {
+// fetchNewsAPIImages queries NewsAPI and Wikipedia for images relevant to the story.
+// It uses both the headline title and the generated script to build a focused search query.
+func fetchNewsAPIImages(title, script string) []map[string]interface{} {
 	newsAPIKey := os.Getenv("NEWSAPI_KEY")
 	var images []map[string]interface{}
 
+	// Build the best possible search query from title + script context
+	searchQuery := buildImageSearchQuery(title, script)
+
 	if newsAPIKey != "" {
-		// Use a focused search query — extract key nouns from title
-		searchQuery := extractSearchQuery(title)
 		query := url.QueryEscape(searchQuery)
 		apiURL := fmt.Sprintf("https://newsapi.org/v2/everything?q=%s&pageSize=9&sortBy=relevancy&language=en&apiKey=%s", query, newsAPIKey)
 
@@ -460,6 +473,7 @@ func fetchNewsAPIImages(title string) []map[string]interface{} {
 							"type":        "news",
 							"source":      "newsapi",
 							"index":       i + 1,
+							"attribution": "Image sourced from NewsAPI — verify copyright before broadcast use",
 						})
 					}
 					if len(images) >= 3 {
@@ -474,9 +488,53 @@ func fetchNewsAPIImages(title string) []map[string]interface{} {
 		return images
 	}
 
-	// Fallback: Wikimedia Commons
-	query := url.QueryEscape(extractSearchQuery(title))
-	wikiURL := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=%s&gsrlimit=3&prop=pageimages&piprop=original&format=json", query)
+	// Fallback: Google Custom Search (returns Creative Commons / licensed images)
+	googleAPIKey := os.Getenv("GOOGLE_API_KEY")
+	googleCSEID := os.Getenv("GOOGLE_CSE_ID")
+	if googleAPIKey != "" && googleCSEID != "" {
+		query := url.QueryEscape(searchQuery)
+		// searchType=image, rights=cc_publicdomain|cc_attribute|cc_sharealike for reusable images
+		cseURL := fmt.Sprintf(
+			"https://www.googleapis.com/customsearch/v1?key=%s&cx=%s&q=%s&searchType=image&num=3&rights=cc_publicdomain|cc_attribute|cc_sharealike",
+			googleAPIKey, googleCSEID, query,
+		)
+		resp, err := http.Get(cseURL) //nolint:gosec
+		if err == nil {
+			defer resp.Body.Close()
+			var result struct {
+				Items []struct {
+					Title   string `json:"title"`
+					Link    string `json:"link"`
+					Image   struct {
+						ContextLink string `json:"contextLink"`
+					} `json:"image"`
+				} `json:"items"`
+			}
+			if json.NewDecoder(resp.Body).Decode(&result) == nil {
+				for i, item := range result.Items {
+					if item.Link != "" {
+						images = append(images, map[string]interface{}{
+							"url":         item.Link,
+							"description": item.Title,
+							"source_url":  item.Image.ContextLink,
+							"type":        "news",
+							"source":      "google-cse",
+							"index":       i + 1,
+							"attribution": "Creative Commons image — modify before broadcast use to avoid copyright issues",
+						})
+					}
+				}
+			}
+		}
+	}
+
+	if len(images) > 0 {
+		return images
+	}
+
+	// Final fallback: Wikimedia Commons (always free to use)
+	query := url.QueryEscape(searchQuery)
+	wikiURL := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=%s&gsrlimit=5&prop=pageimages&piprop=original&format=json", query)
 	resp, err := http.Get(wikiURL) //nolint:gosec
 	if err == nil {
 		defer resp.Body.Close()
@@ -500,6 +558,7 @@ func fetchNewsAPIImages(title string) []map[string]interface{} {
 						"type":        "news",
 						"source":      "wikipedia",
 						"index":       i,
+						"attribution": "Wikimedia Commons — free to use with attribution",
 					})
 					i++
 					if i > 3 {
@@ -513,12 +572,17 @@ func fetchNewsAPIImages(title string) []map[string]interface{} {
 	return images
 }
 
-// extractSearchQuery pulls the most meaningful search terms from a headline
-func extractSearchQuery(title string) string {
-	// Remove common press release prefixes
+// buildImageSearchQuery extracts the most meaningful search terms from the story title and script.
+// It strips HTML, removes generic filler phrases, and focuses on named entities and key topics.
+func buildImageSearchQuery(title, script string) string {
+	// Strip HTML from both inputs
+	title = stripHTMLTags(title)
+	script = stripHTMLTags(script)
+
+	// Remove common broadcast filler from the title
 	prefixes := []string{
 		"STATEHOUSE PRESS RELEASE", "PRESS RELEASE", "BREAKING:", "BREAKING NEWS:",
-		"STATEMENT:", "OFFICIAL:", "UPDATE:",
+		"STATEMENT:", "OFFICIAL:", "UPDATE:", "EXCLUSIVE:",
 	}
 	q := title
 	for _, p := range prefixes {
@@ -526,9 +590,35 @@ func extractSearchQuery(title string) string {
 			q = strings.TrimSpace(q[len(p):])
 		}
 	}
-	// Truncate to first 80 chars for a focused query
+
+	// If the script is available, extract the first 2 sentences for richer context
+	if script != "" {
+		sentences := strings.SplitN(script, ".", 4)
+		var context strings.Builder
+		for i, s := range sentences {
+			if i >= 2 {
+				break
+			}
+			s = strings.TrimSpace(s)
+			if len(s) > 20 {
+				context.WriteString(s)
+				context.WriteString(". ")
+			}
+		}
+		// Combine title keywords with script context, capped at 120 chars
+		combined := q + " " + context.String()
+		if len(combined) > 120 {
+			if idx := strings.LastIndex(combined[:120], " "); idx > 0 {
+				combined = combined[:idx]
+			} else {
+				combined = combined[:120]
+			}
+		}
+		return strings.TrimSpace(combined)
+	}
+
+	// Title-only fallback — truncate to 80 chars
 	if len(q) > 80 {
-		// Cut at last space before 80
 		if idx := strings.LastIndex(q[:80], " "); idx > 0 {
 			q = q[:idx]
 		} else {
@@ -536,6 +626,18 @@ func extractSearchQuery(title string) string {
 		}
 	}
 	return q
+}
+
+// stripHTMLTags is a lightweight HTML stripper for use in search query building.
+func stripHTMLTags(s string) string {
+	re := regexp.MustCompile(`<[^>]+>`)
+	s = re.ReplaceAllString(s, " ")
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	re = regexp.MustCompile(`\s{2,}`)
+	return strings.TrimSpace(re.ReplaceAllString(s, " "))
 }
 
 

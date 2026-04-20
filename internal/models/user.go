@@ -17,16 +17,18 @@ const (
 
 // User represents a user in the system
 type User struct {
-	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	GoogleID      string             `bson:"google_id" json:"google_id"`
-	Email         string             `bson:"email" json:"email"`
-	Name          string             `bson:"name" json:"name"`
-	Picture       string             `bson:"picture" json:"picture"`
-	Role          UserRole           `bson:"role" json:"role"`
-	Active        bool               `bson:"active" json:"active"`
-	CreatedAt     time.Time          `bson:"created_at" json:"created_at"`
-	UpdatedAt     time.Time          `bson:"updated_at" json:"updated_at"`
-	LastLoginAt   time.Time          `bson:"last_login_at" json:"last_login_at"`
+	ID              primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	GoogleID        string             `bson:"google_id" json:"google_id"`
+	Email           string             `bson:"email" json:"email"`
+	Name            string             `bson:"name" json:"name"`
+	Picture         string             `bson:"picture" json:"picture"`
+	Role            UserRole           `bson:"role" json:"role"`
+	Active          bool               `bson:"active" json:"active"`
+	HeygenAvatarID  string             `bson:"heygen_avatar_id,omitempty" json:"heygen_avatar_id,omitempty"`
+	HeygenVoiceID   string             `bson:"heygen_voice_id,omitempty" json:"heygen_voice_id,omitempty"`
+	CreatedAt       time.Time          `bson:"created_at" json:"created_at"`
+	UpdatedAt       time.Time          `bson:"updated_at" json:"updated_at"`
+	LastLoginAt     time.Time          `bson:"last_login_at" json:"last_login_at"`
 }
 
 // RSSFeed represents an RSS feed source

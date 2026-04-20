@@ -58,7 +58,7 @@ func main() {
 
 	// Configure HeyGen (preferred video generator)
 	if heygenKey := os.Getenv("HEYGEN_API_KEY"); heygenKey != "" {
-		aiService.SetHeyGenService(heygenKey)
+		aiService.SetHeyGenService(heygenKey, os.Getenv("HEYGEN_AVATAR_ID"), os.Getenv("HEYGEN_VOICE_ID"))
 	}
 
 	// Configure ElevenLabs if API key is provided (for voice cloning)
@@ -167,7 +167,7 @@ func setupRouter(cfg *config.Config, storyService *services.StoryService, diffEn
 	// API routes
 	v1 := router.Group("/api/v1")
 	api.SetupRoutes(v1, storyService, diffEngine)
-	api.SetupRSSRoutes(v1, rssService, aiService)
+	api.SetupRSSRoutes(v1, rssService, aiService, authService)
 	api.SetupAuthRoutes(v1, authService)
 
 	return router

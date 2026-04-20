@@ -15,6 +15,7 @@ func SetupAuthRoutes(router *gin.RouterGroup, authService *services.AuthService)
 		auth.POST("/google", googleAuth(authService))
 		auth.GET("/me", requireAuth(), getCurrentUser(authService))
 		auth.POST("/logout", requireAuth(), logout())
+		auth.PUT("/me/heygen", requireAuth(), updateHeygenSettings(authService))
 	}
 
 	// Admin routes
@@ -140,5 +141,31 @@ func requireRole(requiredRole models.UserRole) gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+
+func updateHeygenSettings(authService *services.AuthService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		var req struct {
+			AvatarID string `json:"heygen_avatar_id"`
+			VoiceID  string `json:"heygen_voice_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if err := authService.UpdateUserHeygenSettings(userID.(string), req.AvatarID, req.VoiceID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "HeyGen settings saved"})
 	}
 }
