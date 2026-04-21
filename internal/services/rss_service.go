@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,10 +23,15 @@ import (
 
 const (
 	cacheKeyFeeds     = "rss:feeds"
-	cacheKeyHeadlines = "rss:headlines"
 	cacheTTLFeeds     = 5 * time.Minute
-	cacheTTLHeadlines = 10 * time.Minute
+	cacheTTLHeadlines = 15 * time.Minute
 )
+
+// headlinesCacheKey returns a date-scoped cache key so yesterday's headlines
+// are never served today.
+func headlinesCacheKey() string {
+	return "rss:headlines:" + time.Now().UTC().Format("2006-01-02")
+}
 
 type RSSService struct {
 	db     *database.MongoDB
@@ -240,15 +246,16 @@ func (r *RSSService) DeleteRSSFeed(feedID string) error {
 
 func (r *RSSService) invalidateCaches() {
 	_ = r.redis.InvalidateCache(cacheKeyFeeds)
-	_ = r.redis.InvalidateCache(cacheKeyHeadlines)
+	_ = r.redis.InvalidateCache(headlinesCacheKey())
 }
 
 func (r *RSSService) InvalidateHeadlinesCache() {
-	_ = r.redis.InvalidateCache(cacheKeyHeadlines)
+	_ = r.redis.InvalidateCache(headlinesCacheKey())
 }
 func (r *RSSService) FetchAllHeadlines() ([]Headline, error) {
+	cacheKey := headlinesCacheKey()
 	// Try headlines cache
-	if cached, err := r.redis.GetCachedJSON(cacheKeyHeadlines); err == nil {
+	if cached, err := r.redis.GetCachedJSON(cacheKey); err == nil {
 		var headlines []Headline
 		if json.Unmarshal([]byte(cached), &headlines) == nil {
 			logrus.Info("Serving headlines from cache")
@@ -288,7 +295,7 @@ func (r *RSSService) FetchAllHeadlines() ([]Headline, error) {
 
 	// Cache headlines
 	if data, err := json.Marshal(headlines); err == nil {
-		_ = r.redis.CacheJSON(cacheKeyHeadlines, string(data), cacheTTLHeadlines)
+		_ = r.redis.CacheJSON(cacheKey, string(data), cacheTTLHeadlines)
 	}
 
 	return headlines, nil
@@ -339,10 +346,15 @@ func (r *RSSService) fetchHeadlinesFromFeed(feedURL, category string) ([]Headlin
 
 	headlines := make([]Headline, 0, len(feed.Items))
 	for _, item := range feed.Items {
+		// Strip HTML tags and decode entities from title and description
+		// RSS feeds (especially RSSHub Twitter feeds) embed raw HTML in these fields
+		cleanTitle := stripHTMLContent(html.UnescapeString(item.Title))
+		cleanDesc := stripHTMLContent(html.UnescapeString(item.Description))
+
 		h := Headline{
 			ID:          generateHeadlineID(item),
-			Title:       html.UnescapeString(item.Title),
-			Description: html.UnescapeString(item.Description),
+			Title:       cleanTitle,
+			Description: cleanDesc,
 			URL:         item.Link,
 			Source:      html.UnescapeString(feed.Title),
 			Category:    category,
@@ -465,4 +477,37 @@ func generateHeadlineID(item *gofeed.Item) string {
 		return item.GUID
 	}
 	return item.Link
+}
+
+// stripHTMLContent removes HTML tags, embedded media, and decodes entities.
+// Used to clean RSS feed titles and descriptions before storing or displaying.
+func stripHTMLContent(s string) string {
+	// Remove <style> and <script> blocks entirely
+	re := regexp.MustCompile(`(?is)<(style|script)[^>]*>.*?</(style|script)>`)
+	s = re.ReplaceAllString(s, " ")
+
+	// Remove <video>, <audio>, <img> tags and their content attributes
+	re = regexp.MustCompile(`(?is)<(video|audio|iframe)[^>]*>.*?</(video|audio|iframe)>`)
+	s = re.ReplaceAllString(s, " ")
+
+	// Remove all remaining HTML tags
+	re = regexp.MustCompile(`<[^>]+>`)
+	s = re.ReplaceAllString(s, " ")
+
+	// Decode common HTML entities
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	s = strings.ReplaceAll(s, "&quot;", `"`)
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+	s = strings.ReplaceAll(s, "&apos;", "'")
+
+	// Collapse whitespace
+	re = regexp.MustCompile(`[ \t]{2,}`)
+	s = re.ReplaceAllString(s, " ")
+	re = regexp.MustCompile(`\n{3,}`)
+	s = re.ReplaceAllString(s, "\n\n")
+
+	return strings.TrimSpace(s)
 }
